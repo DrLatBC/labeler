@@ -4,6 +4,16 @@ Web app that prints labels to a Phomemo M110 over Web Bluetooth. Replaces the Pr
 
 Live: https://drlatbc.github.io/labeler/ (Chrome on Android or desktop; Web Bluetooth does not work on iOS).
 
+## Homebox
+
+Served at https://homebox.drlat.dev/labeler/ so it shares the Homebox login cookie. The Homebox tab only appears when `/api/v1/status` on the same origin answers as Homebox.
+
+- Search: `GET /api/v1/entities?q=&pageSize=25&orderBy=` (`isLocation=true` for locations)
+- Label image: `GET /api/v1/labelmaker/{item|location|asset}/{id}`, sized by `HBOX_LABEL_MAKER_WIDTH=320` / `HBOX_LABEL_MAKER_HEIGHT=240` in `~/homebox/homebox.env` on the box
+- Share target: sharing a Homebox `/item/{id}`, `/location/{id}` or `/a/{assetId}` link to the installed app opens that label
+
+Deploy: `ssh lore_capsule 'cd /var/www/labeler && git pull --ff-only'`. nginx serves it via a `location /labeler/` alias block in `/etc/nginx/sites-available/homebox`.
+
 ## Run locally
 
 ```
