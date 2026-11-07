@@ -7,6 +7,7 @@
 <meta name="theme-color" content="#111418">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <style>
 :root {
   --bg: #f4f5f7;
@@ -412,8 +413,8 @@ function labelDots() {
   return { wmm, hmm, w: wmm * M110.DOTS_PER_MM, h: hmm * M110.DOTS_PER_MM };
 }
 
-function layoutLines(ctx, text, size, maxW) {
-  ctx.font = `${S.bold ? 700 : 400} ${size}px ${S.font}`;
+function layoutLines(ctx, text, size, maxW, style) {
+  ctx.font = `${style.weight} ${size}px ${style.family}`;
   const out = [];
   for (const para of text.split('\n')) {
     const words = para.split(/(\s+)/);
@@ -428,27 +429,30 @@ function layoutLines(ctx, text, size, maxW) {
   return out;
 }
 
-function fits(ctx, text, size, maxW, maxH) {
-  const lines = layoutLines(ctx, text, size, maxW);
+function fits(ctx, text, size, maxW, maxH, style) {
+  const lines = layoutLines(ctx, text, size, maxW, style);
   const tooWide = lines.some(l => ctx.measureText(l).width > maxW);
   return !tooWide && lines.length * size * 1.15 <= maxH;
+}
+
+// Largest size (up to hi) where text wraps within maxW x maxH without splitting a word.
+function fitSize(ctx, text, maxW, maxH, style, hi = 400) {
+  let lo = 8;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; fits(ctx, text, mid, maxW, maxH, style) ? lo = mid : hi = mid; }
+  return lo;
 }
 
 function drawText(ctx, w, h) {
   const pad = Math.round(Math.min(w, h) * 0.06) + (S.border ? 6 : 0);
   const maxW = w - pad * 2, maxH = h - pad * 2;
   const text = S.text || '';
-  let size = S.fontSize;
-  if (S.fit && text.trim()) {
-    let lo = 8, hi = 400;
-    while (hi - lo > 1) { const mid = (lo + hi) >> 1; fits(ctx, text, mid, maxW, maxH) ? lo = mid : hi = mid; }
-    size = lo;
-  }
+  const style = { weight: S.bold ? 700 : 400, family: S.font };
+  const size = S.fit && text.trim() ? fitSize(ctx, text, maxW, maxH, style) : S.fontSize;
   const fg = S.invertText ? '#fff' : '#000';
   if (S.invertText) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h); }
   if (S.border) { ctx.strokeStyle = fg; ctx.lineWidth = 4; ctx.strokeRect(6, 6, w - 12, h - 12); }
   if (!text.trim()) return size;
-  const lines = layoutLines(ctx, text, size, maxW);
+  const lines = layoutLines(ctx, text, size, maxW, style);
   const lh = size * 1.15;
   ctx.fillStyle = fg;
   ctx.textBaseline = 'middle';
@@ -457,6 +461,61 @@ function drawText(ctx, w, h) {
   let y = h / 2 - (lines.length - 1) * lh / 2;
   for (const l of lines) { ctx.fillText(l, x, y); y += lh; }
   return size;
+}
+
+// QR (same link Homebox's own labels use) on the left, name auto-sized on the right, details below it.
+function drawHomebox(ctx, w, h) {
+  const lb = hb.label;
+  if (!lb) return;
+  const m = Math.round(Math.min(w, h) * 0.05);
+  ctx.fillStyle = '#000';
+
+  // Tall labels stack the QR above the text instead of beside it.
+  const tall = h > w * 1.2;
+  let qrSize = 0;
+  if (window.qrcode) {
+    const qr = qrcode(0, 'M');
+    qr.addData(lb.url);
+    qr.make();
+    const n = qr.getModuleCount();
+    const box = tall ? Math.min(w - 2 * m, h * 0.5) : Math.min(h - 2 * m, w * 0.5);
+    const cell = Math.floor(box / n);
+    qrSize = cell * n;
+    const x0 = tall ? Math.round((w - qrSize) / 2) : m;
+    const y0 = tall ? m : Math.round((h - qrSize) / 2);
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+      if (qr.isDark(r, c)) ctx.fillRect(x0 + c * cell, y0 + r * cell, cell, cell);
+    }
+  }
+
+  const tx = qrSize && !tall ? 2 * m + qrSize : m;
+  const ty = qrSize && tall ? 2 * m + qrSize : m;
+  const tw = w - tx - m, th = h - ty - m;
+  const family = 'system-ui, sans-serif';
+  const nameStyle = { weight: 700, family };
+  const subStyle = { weight: 400, family };
+
+  // Details share one size and may wrap one extra line before shrinking.
+  const details = lb.sub.filter(Boolean);
+  const subMax = Math.max(14, Math.round(Math.min(w, h) * 0.09));
+  const subText = details.join('\n');
+  const subSize = details.length ? fitSize(ctx, subText, tw, subMax * 1.15 * (details.length + 1), subStyle, subMax + 1) : 0;
+  const subLines = details.length ? layoutLines(ctx, subText, subSize, tw, subStyle) : [];
+  const subH = subLines.length * subSize * 1.15;
+  const gap = details.length ? Math.round(m * 0.8) : 0;
+
+  const nameSize = fitSize(ctx, lb.name, tw, th - subH - gap, nameStyle, Math.round(Math.min(w, h) * 0.3));
+  const lines = layoutLines(ctx, lb.name, nameSize, tw, nameStyle);
+  const nameH = lines.length * nameSize * 1.15;
+
+  const x = tall ? w / 2 : tx;
+  let y = ty + Math.round((th - nameH - gap - subH) / 2);
+  ctx.textAlign = tall ? 'center' : 'left';
+  ctx.textBaseline = 'top';
+  for (const l of lines) { ctx.fillText(l, x, y); y += nameSize * 1.15; }
+  y += gap;
+  ctx.font = `${subStyle.weight} ${subSize}px ${family}`;
+  for (const l of subLines) { ctx.fillText(l, x, y); y += subSize * 1.15; }
 }
 
 function drawImage(ctx, w, h, img) {
@@ -508,7 +567,8 @@ function render() {
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
   let used = null;
   if (S.mode === 'text') used = drawText(ctx, w, h);
-  else drawImage(ctx, w, h, S.mode === 'image' ? image : hb.image);
+  else if (S.mode === 'image') drawImage(ctx, w, h, image);
+  else drawHomebox(ctx, w, h);
   bitmap = toBitmap(ctx, w, h, S.mode === 'image' && S.dither);
 
   const pv = $('preview');
@@ -678,7 +738,7 @@ $('conn').onclick = () => connect();
 
 $('print').onclick = async () => {
   if (!bitmap) return;
-  if (S.mode === 'homebox' && !hb.image) { toast('Pick something from Homebox first'); return; }
+  if (S.mode === 'homebox' && !hb.label) { toast('Pick something from Homebox first'); return; }
   const btn = $('print');
   btn.disabled = true;
   try {
@@ -699,7 +759,7 @@ $('print').onclick = async () => {
 };
 
 // ---- Homebox: only offered when this page is served from the Homebox domain ----
-const hb = { available: false, image: null, selected: null };
+const hb = { available: false, label: null };
 let hbTimer, hbSeq = 0;
 
 async function hbApi(path) {
@@ -728,14 +788,14 @@ function hbRenderResults(items) {
   list.replaceChildren(...items.map(it => {
     const btn = document.createElement('button');
     btn.dataset.id = it.id;
-    btn.setAttribute('aria-pressed', hb.selected?.id === it.id);
+    btn.setAttribute('aria-pressed', hb.label?.id === it.id);
     const name = document.createElement('span');
     name.textContent = it.name;
     const sub = document.createElement('span');
     sub.className = 'sub';
-    sub.textContent = [it.parent?.name, it.assetId ? '#' + String(it.assetId).replace(/"/g, '') : ''].filter(Boolean).join('  ·  ');
+    sub.textContent = hbDetails(it).join('  ·  ');
     btn.append(name, sub);
-    btn.onclick = () => hbSelect({ kind: S.hbKind, id: it.id });
+    btn.onclick = () => hbShow(hbLabel(it, S.hbKind));
     const li = document.createElement('li');
     li.append(btn);
     return li;
@@ -761,16 +821,36 @@ async function hbSearch() {
   }
 }
 
-// kind is a labelmaker route: item, location or asset.
-async function hbSelect(target) {
-  hb.selected = target;
-  document.querySelectorAll('#hbResults button').forEach(b => b.setAttribute('aria-pressed', b.dataset.id === target.id));
+function hbDetails(e) {
+  const asset = e.assetId ? '#' + String(e.assetId).replace(/"/g, '') : '';
+  return [(e.location || e.parent)?.name, asset].filter(Boolean);
+}
+
+// kind is the Homebox page the QR opens: item or location.
+function hbLabel(e, kind) {
+  return { id: e.id, name: e.name, sub: hbDetails(e), url: `${location.origin}/${kind}/${e.id}` };
+}
+
+function hbShow(label) {
+  hb.label = label;
+  document.querySelectorAll('#hbResults button').forEach(b => b.setAttribute('aria-pressed', b.dataset.id === label.id));
+  if (S.mode !== 'homebox') set({ mode: 'homebox' }); else render();
+}
+
+async function hbOpenShared({ kind, id }) {
   try {
-    const blob = await (await hbApi(`/labelmaker/${target.kind}/${encodeURIComponent(target.id)}`)).blob();
-    const img = await createImageBitmap(blob);
-    if (hb.selected !== target) return;
-    hb.image = img;
-    if (S.mode !== 'homebox') set({ mode: 'homebox' }); else render();
+    if (kind === 'asset') {
+      // The entities list returns items only unless isLocation=true, so check both.
+      for (const k of ['item', 'location']) {
+        const params = new URLSearchParams({ q: '#' + id, pageSize: '1' });
+        if (k === 'location') params.set('isLocation', 'true');
+        const found = await (await hbApi('/entities?' + params)).json();
+        if (found.items.length) return hbShow(hbLabel(found.items[0], k));
+      }
+      throw new Error(`Nothing in Homebox has asset #${id}`);
+    } else {
+      hbShow(hbLabel(await (await hbApi('/entities/' + encodeURIComponent(id))).json(), kind));
+    }
   } catch (e) {
     hbError(e);
   }
@@ -798,7 +878,7 @@ async function hbInit() {
   const shared = hbSharedTarget();
   if (shared) {
     history.replaceState(null, '', location.pathname);
-    hbSelect(shared);
+    hbOpenShared(shared);
   }
   if (S.mode === 'homebox' || shared) hbSearch();
 }

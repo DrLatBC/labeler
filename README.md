@@ -9,8 +9,8 @@ Live: https://drlatbc.github.io/labeler/ (Chrome on Android or desktop; Web Blue
 Served at https://homebox.drlat.dev/labeler/ so it shares the Homebox login cookie. The Homebox tab only appears when `/api/v1/status` on the same origin answers as Homebox.
 
 - Search: `GET /api/v1/entities?q=&pageSize=25&orderBy=` (`isLocation=true` for locations)
-- Label image: `GET /api/v1/labelmaker/{item|location|asset}/{id}`, sized by `HBOX_LABEL_MAKER_WIDTH=320` / `HBOX_LABEL_MAKER_HEIGHT=240` in `~/homebox/homebox.env` on the box
-- Share target: sharing a Homebox `/item/{id}`, `/location/{id}` or `/a/{assetId}` link to the installed app opens that label
+- Labels are drawn by Labeler, not Homebox's labelmaker (its fixed font clips names at 40 x 30 mm): QR to `/item/{id}` or `/location/{id}` (the same links Homebox's labels use), name auto-sized beside it, parent location and asset ID below. Tall labels stack the QR above the text. QR from [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 1.4.4 on cdnjs.
+- Share target: sharing a Homebox `/item/{id}`, `/location/{id}` or `/a/{assetId}` link to the installed app opens that label (`GET /api/v1/entities/{id}`, or `q=#<assetId>` across items then locations)
 
 Deploy: `ssh lore_capsule 'cd /var/www/labeler && git pull --ff-only'`. nginx serves it via a `location /labeler/` alias block in `/etc/nginx/sites-available/homebox`.
 
