@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Labeler</title>
+<meta name="theme-color" content="#111418">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #eceef2;
+  --text: #15181d;
+  --muted: #6b7280;
+  --line: #d9dce2;
+  --accent: #2563eb;
+  --accent-text: #ffffff;
+  --ok: #16a34a;
+  --warn: #d97706;
+  --bad: #dc2626;
+  --label: #ffffff;
+  --radius: 12px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1114;
+    --surface: #171a1f;
+    --surface-2: #22262d;
+    --text: #e8eaee;
+    --muted: #9aa1ac;
+    --line: #2c3139;
+    --accent: #3b82f6;
+    --label: #f3f3f0;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1114;
+  --surface: #171a1f;
+  --surface-2: #22262d;
+  --text: #e8eaee;
+  --muted: #9aa1ac;
+  --line: #2c3139;
+  --accent: #3b82f6;
+  --label: #f3f3f0;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 100dvh;
+  display: flex; flex-direction: column;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+svg { width: 20px; height: 20px; flex: none; }
+
+.bar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px;
+  padding-top: max(12px, env(safe-area-inset-top));
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.bar h1 { font-size: 17px; margin: 0; flex: 1; letter-spacing: .2px; }
+.conn {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 36px; padding: 0 12px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--surface-2); cursor: pointer;
+}
+.conn .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.conn[data-state="on"] .dot { background: var(--ok); }
+.conn[data-state="busy"] .dot { background: var(--warn); }
+.conn[data-state="err"] .dot { background: var(--bad); }
+
+main {
+  flex: 1; width: 100%;
+  max-width: 1100px; margin: 0 auto;
+  padding: 16px;
+  display: grid; gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 900px) {
+  main { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; padding: 24px; gap: 24px; }
+  .preview-card { position: sticky; top: 84px; }
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.preview-card { display: grid; gap: 12px; }
+.stage {
+  display: grid; place-items: center;
+  min-height: 180px; padding: 20px;
+  border-radius: 8px;
+  background: repeating-linear-gradient(45deg, var(--surface-2) 0 10px, transparent 10px 20px);
+}
+#preview {
+  display: block; max-width: 100%;
+  background: var(--label);
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.15), 0 6px 18px rgba(0,0,0,.12);
+  image-rendering: pixelated;
+}
+.meta { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; }
+
+.controls { display: grid; gap: 16px; }
+.group { display: grid; gap: 12px; }
+.group + .group { padding-top: 16px; border-top: 1px solid var(--line); }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row > .grow { flex: 1; min-width: 0; }
+label.field { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+
+.seg {
+  display: inline-flex; padding: 3px; gap: 2px;
+  background: var(--surface-2); border-radius: 10px;
+}
+.seg button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 40px; height: 34px; padding: 0 12px;
+  border: 0; border-radius: 8px; background: transparent; cursor: pointer; color: var(--muted);
+}
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.seg.full { display: flex; }
+.seg.full button { flex: 1; }
+
+textarea, select, input[type="number"] {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid transparent; border-radius: 10px;
+  padding: 10px 12px;
+}
+textarea { min-height: 96px; resize: vertical; font-size: 16px; }
+textarea:focus, select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+input[type="number"] { width: 76px; text-align: center; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+.range { display: grid; grid-template-columns: 24px 1fr 36px; align-items: center; gap: 10px; color: var(--muted); }
+.range output { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
+
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface); cursor: pointer;
+}
+.icon-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+
+.drop {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 96px; padding: 16px;
+  border: 1.5px dashed var(--line); border-radius: 10px;
+  color: var(--muted); cursor: pointer; text-align: center;
+}
+.drop.has { justify-content: space-between; border-style: solid; color: var(--text); }
+.drop img { max-height: 64px; max-width: 50%; border-radius: 4px; }
+
+.size-custom { display: none; }
+.size-custom.show { display: flex; }
+.x { color: var(--muted); }
+
+.printbar {
+  position: sticky; bottom: 0; z-index: 5;
+  padding: 12px 16px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+.printbar .inner { max-width: 1100px; margin: 0 auto; display: flex; gap: 12px; align-items: center; }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.stepper button { width: 40px; height: 48px; border: 0; background: var(--surface-2); cursor: pointer; font-size: 18px; }
+.stepper span { min-width: 40px; text-align: center; font-variant-numeric: tabular-nums; }
+.print {
+  flex: 1;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  height: 48px; border: 0; border-radius: 10px;
+  background: var(--accent); color: var(--accent-text);
+  font-weight: 600; font-size: 16px; cursor: pointer;
+}
+.print:disabled { opacity: .55; cursor: default; }
+.progress { height: 3px; background: var(--surface-2); border-radius: 2px; overflow: hidden; margin-top: 10px; display: none; }
+.progress.show { display: block; }
+.progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .1s; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%) translateY(20px);
+  max-width: calc(100% - 32px);
+  padding: 10px 14px; border-radius: 10px;
+  background: var(--text); color: var(--bg); font-size: 14px;
+  opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-bt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></symbol>
+  <symbol id="i-print" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h12M3 18h16"/></symbol>
+  <symbol id="i-center" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M6 12h12M4 18h16"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M9 12h12M5 18h16"/></symbol>
+  <symbol id="i-bold" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h8a4 4 0 0 1 0 8H6z"/><path d="M6 12h9a4 4 0 0 1 0 8H6z"/></symbol>
+  <symbol id="i-fit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></symbol>
+  <symbol id="i-border" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10" rx="1" stroke-dasharray="2 2"/></symbol>
+  <symbol id="i-invert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="9" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="9" cy="14" r="1.6"/><circle cx="15" cy="15" r="1.6"/><circle cx="6" cy="19" r="1.6"/><circle cx="18" cy="19" r="1.6"/></symbol>
+</svg>
+
+<header class="bar">
+  <h1>Labeler</h1>
+  <button class="conn" id="conn" data-state="off" title="Connect printer">
+    <svg><use href="#i-bt"/></svg><span class="dot"></span><span id="connName">M110</span>
+  </button>
+</header>
+
+<main>
+  <section class="card preview-card" aria-label="Preview">
+    <div class="stage"><canvas id="preview"></canvas></div>
+    <div class="meta"><span id="dims"></span><span id="sizeName"></span></div>
+  </section>
+
+  <section class="card controls">
+    <div class="group">
+      <div class="seg full" role="group" aria-label="Content">
+        <button data-mode="text" aria-pressed="true" title="Text"><svg><use href="#i-text"/></svg></button>
+        <button data-mode="image" aria-pressed="false" title="Image"><svg><use href="#i-image"/></svg></button>
+      </div>
+
+      <div id="textPane" class="group">
+        <textarea id="text" placeholder="Label text" spellcheck="false"></textarea>
+        <div class="row">
+          <div class="seg" role="group" aria-label="Align">
+            <button data-align="left" title="Left"><svg><use href="#i-left"/></svg></button>
+            <button data-align="center" title="Center"><svg><use href="#i-center"/></svg></button>
+            <button data-align="right" title="Right"><svg><use href="#i-right"/></svg></button>
+          </div>
+          <button class="icon-btn" id="bold" title="Bold"><svg><use href="#i-bold"/></svg></button>
+          <button class="icon-btn" id="border" title="Border"><svg><use href="#i-border"/></svg></button>
+          <button class="icon-btn" id="invertText" title="White on black"><svg><use href="#i-invert"/></svg></button>
+          <select id="font" class="grow" aria-label="Font">
+            <option value="system-ui, sans-serif">Sans</option>
+            <option value="Georgia, serif">Serif</option>
+            <option value="ui-monospace, Consolas, monospace">Mono</option>
+            <option value="Impact, 'Arial Black', sans-serif">Heavy</option>
+          </select>
+        </div>
+        <div class="row">
+          <button class="icon-btn" id="fit" title="Auto size"><svg><use href="#i-fit"/></svg></button>
+          <div class="range grow" id="sizeRow">
+            <svg><use href="#i-text"/></svg>
+            <input type="range" id="fontSize" min="12" max="200" step="1" aria-label="Text size">
+            <output id="fontSizeOut"></output>
+          </div>
+        </div>
+      </div>
+
+      <div id="imagePane" class="group hidden">
+        <label class="drop" id="drop">
+          <input type="file" id="file" accept="image/*" hidden>
+          <span id="dropHint"><svg style="vertical-align:-5px"><use href="#i-image"/></svg>&nbsp; Choose image</span>
+          <img id="thumb" alt="" class="hidden">
+          <button class="icon-btn hidden" id="clearImg" title="Remove"><svg><use href="#i-x"/></svg></button>
+        </label>
+        <div class="row">
+          <button class="icon-btn" id="dither" title="Dither"><svg><use href="#i-dots"/></svg></button>
+          <button class="icon-btn" id="invertImg" title="Invert"><svg><use href="#i-invert"/></svg></button>
+          <div class="range grow">
+            <svg><use href="#i-sun"/></svg>
+            <input type="range" id="bright" min="-100" max="100" step="1" aria-label="Brightness">
+            <output id="brightOut"></output>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="row">
+        <label class="field grow">Label
+          <select id="size">
+            <option value="40x30">40 × 30 mm</option>
+            <option value="40x20">40 × 20 mm</option>
+            <option value="40x60">40 × 60 mm</option>
+            <option value="50x30">50 × 30 mm</option>
+            <option value="30x20">30 × 20 mm</option>
+            <option value="30x15">30 × 15 mm</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+        <label class="field grow">Paper
+          <select id="media">
+            <option value="10">Gaps</option>
+            <option value="11">Continuous</option>
+            <option value="38">Black marks</option>
+          </select>
+        </label>
+      </div>
+      <div class="row size-custom" id="customRow">
+        <input type="number" id="cw" min="10" max="48" step="1" aria-label="Width mm"><span class="x">×</span>
+        <input type="number" id="ch" min="10" max="200" step="1" aria-label="Height mm"><span class="x">mm</span>
+      </div>
+      <label class="field">Darkness
+        <div class="range">
+          <svg><use href="#i-invert"/></svg>
+          <input type="range" id="density" min="1" max="15" step="1">
+          <output id="densityOut"></output>
+        </div>
+      </label>
+    </div>
+  </section>
+</main>
+
+<footer class="printbar">
+  <div class="inner">
+    <div class="stepper" aria-label="Copies">
+      <button id="minus" aria-label="Fewer">−</button><span id="copies">1</span><button id="plus" aria-label="More">+</button>
+    </div>
+    <button class="print" id="print"><svg><use href="#i-print"/></svg><span id="printLabel">Print</span></button>
+  </div>
+  <div class="inner"><div class="progress grow" id="progress" style="flex:1"><i id="bar"></i></div></div>
+</footer>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+// M110 protocol, matching pyphomemo / phomymo / phomemo-tools.
+const M110 = {
+  DOTS_PER_MM: 8,
+  HEAD_DOTS: 384,
+  SERVICES: [0xff00, 0xffe0, 0xae30, '49535343-fe7d-4ae5-8fa9-9fafd205e455'],
+  WRITE_CHAR: 0xff02,
+  NOTIFY_CHAR: 0xff03,
+  CHUNK: 128,
+  speed: s => [0x1b, 0x4e, 0x0d, s],
+  density: d => [0x1b, 0x4e, 0x04, d],
+  media: m => [0x1f, 0x11, m],
+  raster: (wb, h) => [0x1d, 0x76, 0x30, 0x00, wb & 0xff, wb >> 8, h & 0xff, h >> 8],
+  FOOTER: [0x1f, 0xf0, 0x05, 0x00, 0x1f, 0xf0, 0x03, 0x00],
+};
+
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+const DEFAULTS = {
+  mode: 'text', text: '', align: 'center', bold: true, border: false, invertText: false,
+  font: 'system-ui, sans-serif', fit: true, fontSize: 48,
+  dither: true, invertImg: false, bright: 0,
+  size: '40x30', cw: 40, ch: 30, media: 10, density: 10, copies: 1,
+};
+let S = { ...DEFAULTS };
+try { Object.assign(S, JSON.parse(localStorage.getItem('labeler') || '{}')); } catch {}
+const save = () => { try { localStorage.setItem('labeler', JSON.stringify(S)); } catch {} };
+
+let image = null;
+let bitmap = null;
+
+function labelDots() {
+  const [w, h] = S.size === 'custom' ? [S.cw, S.ch] : S.size.split('x').map(Number);
+  const wmm = Math.min(Math.max(w || 40, 10), M110.HEAD_DOTS / M110.DOTS_PER_MM);
+  const hmm = Math.min(Math.max(h || 30, 10), 200);
+  return { wmm, hmm, w: wmm * M110.DOTS_PER_MM, h: hmm * M110.DOTS_PER_MM };
+}
+
+function layoutLines(ctx, text, size, maxW) {
+  ctx.font = `${S.bold ? 700 : 400} ${size}px ${S.font}`;
+  const out = [];
+  for (const para of text.split('\n')) {
+    const words = para.split(/(\s+)/);
+    let line = '';
+    for (const w of words) {
+      const next = line + w;
+      if (line && ctx.measureText(next).width > maxW && w.trim()) { out.push(line.trimEnd()); line = w.trimStart(); }
+      else line = next;
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+function fits(ctx, text, size, maxW, maxH) {
+  const lines = layoutLines(ctx, text, size, maxW);
+  const tooWide = lines.some(l => ctx.measureText(l).width > maxW);
+  return !tooWide && lines.length * size * 1.15 <= maxH;
+}
+
+function drawText(ctx, w, h) {
+  const pad = Math.round(Math.min(w, h) * 0.06) + (S.border ? 6 : 0);
+  const maxW = w - pad * 2, maxH = h - pad * 2;
+  const text = S.text || '';
+  let size = S.fontSize;
+  if (S.fit && text.trim()) {
+    let lo = 8, hi = 400;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; fits(ctx, text, mid, maxW, maxH) ? lo = mid : hi = mid; }
+    size = lo;
+  }
+  const fg = S.invertText ? '#fff' : '#000';
+  if (S.invertText) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h); }
+  if (S.border) { ctx.strokeStyle = fg; ctx.lineWidth = 4; ctx.strokeRect(6, 6, w - 12, h - 12); }
+  if (!text.trim()) return size;
+  const lines = layoutLines(ctx, text, size, maxW);
+  const lh = size * 1.15;
+  ctx.fillStyle = fg;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = S.align;
+  const x = S.align === 'left' ? pad : S.align === 'right' ? w - pad : w / 2;
+  let y = h / 2 - (lines.length - 1) * lh / 2;
+  for (const l of lines) { ctx.fillText(l, x, y); y += lh; }
+  return size;
+}
+
+function drawImage(ctx, w, h) {
+  if (!image) return;
+  const r = Math.min(w / image.width, h / image.height);
+  const dw = image.width * r, dh = image.height * r;
+  ctx.drawImage(image, (w - dw) / 2, (h - dh) / 2, dw, dh);
+}
+
+// Returns 1-bit rows packed MSB-first, 1 = black, as the M110 expects.
+function toBitmap(ctx, w, h, dither) {
+  const px = ctx.getImageData(0, 0, w, h).data;
+  const g = new Float32Array(w * h);
+  const b = S.mode === 'image' ? S.bright * 1.28 : 0;
+  const inv = S.mode === 'image' && S.invertImg;
+  for (let i = 0; i < w * h; i++) {
+    const a = px[i * 4 + 3] / 255;
+    let v = (0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2]) * a + 255 * (1 - a) + b;
+    if (inv) v = 255 - v;
+    g[i] = v;
+  }
+  const wb = Math.ceil(w / 8);
+  const out = new Uint8Array(wb * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const old = g[i];
+      const black = old < 128;
+      if (black) out[y * wb + (x >> 3)] |= 0x80 >> (x & 7);
+      if (dither) {
+        const err = old - (black ? 0 : 255);
+        if (x + 1 < w) g[i + 1] += err * 7 / 16;
+        if (y + 1 < h) {
+          if (x > 0) g[i + w - 1] += err * 3 / 16;
+          g[i + w] += err * 5 / 16;
+          if (x + 1 < w) g[i + w + 1] += err * 1 / 16;
+        }
+      }
+    }
+  }
+  return { w, h, wb, data: out };
+}
+
+function render() {
+  const { wmm, hmm, w, h } = labelDots();
+  const work = document.createElement('canvas');
+  work.width = w; work.height = h;
+  const ctx = work.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+  let used = null;
+  if (S.mode === 'text') used = drawText(ctx, w, h); else drawImage(ctx, w, h);
+  bitmap = toBitmap(ctx, w, h, S.mode === 'image' && S.dither);
+
+  const pv = $('preview');
+  pv.width = w; pv.height = h;
+  const pctx = pv.getContext('2d');
+  const img = pctx.createImageData(w, h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const on = bitmap.data[y * bitmap.wb + (x >> 3)] & (0x80 >> (x & 7));
+    const o = (y * w + x) * 4;
+    const v = on ? 20 : 255;
+    img.data[o] = img.data[o + 1] = img.data[o + 2] = v; img.data[o + 3] = on ? 255 : 0;
+  }
+  pctx.putImageData(img, 0, 0);
+  const scale = Math.min(3, 520 / w);
+  pv.style.width = (w * scale) + 'px';
+
+  $('dims').textContent = `${w} × ${h} dots`;
+  $('sizeName').textContent = `${wmm} × ${hmm} mm`;
+  if (S.fit && used) { $('fontSize').value = used; $('fontSizeOut').textContent = used; }
+}
+
+function syncUI() {
+  document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === S.mode));
+  $('textPane').classList.toggle('hidden', S.mode !== 'text');
+  $('imagePane').classList.toggle('hidden', S.mode !== 'image');
+  document.querySelectorAll('[data-align]').forEach(b => b.setAttribute('aria-pressed', b.dataset.align === S.align));
+  for (const k of ['bold', 'border', 'invertText', 'fit', 'dither', 'invertImg']) $(k).setAttribute('aria-pressed', !!S[k]);
+  $('text').value = S.text;
+  $('font').value = S.font;
+  $('fontSize').value = S.fontSize; $('fontSizeOut').textContent = S.fontSize;
+  $('fontSize').disabled = S.fit; $('sizeRow').style.opacity = S.fit ? .5 : 1;
+  $('bright').value = S.bright; $('brightOut').textContent = S.bright;
+  $('size').value = S.size;
+  $('customRow').classList.toggle('show', S.size === 'custom');
+  $('cw').value = S.cw; $('ch').value = S.ch;
+  $('media').value = S.media;
+  $('density').value = S.density; $('densityOut').textContent = S.density;
+  $('copies').textContent = S.copies;
+  $('printLabel').textContent = S.copies > 1 ? `Print ${S.copies}` : 'Print';
+}
+
+function set(patch) { Object.assign(S, patch); save(); syncUI(); render(); }
+
+document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => set({ mode: b.dataset.mode }));
+document.querySelectorAll('[data-align]').forEach(b => b.onclick = () => set({ align: b.dataset.align }));
+for (const k of ['bold', 'border', 'invertText', 'fit', 'dither', 'invertImg']) $(k).onclick = () => set({ [k]: !S[k] });
+$('text').oninput = e => set({ text: e.target.value });
+$('font').onchange = e => set({ font: e.target.value });
+$('fontSize').oninput = e => set({ fontSize: +e.target.value });
+$('bright').oninput = e => set({ bright: +e.target.value });
+$('size').onchange = e => set({ size: e.target.value });
+$('cw').onchange = e => set({ cw: +e.target.value });
+$('ch').onchange = e => set({ ch: +e.target.value });
+$('media').onchange = e => set({ media: +e.target.value });
+$('density').oninput = e => set({ density: +e.target.value });
+$('minus').onclick = () => set({ copies: Math.max(1, S.copies - 1) });
+$('plus').onclick = () => set({ copies: Math.min(50, S.copies + 1) });
+
+function loadImageFile(f) {
+  if (!f || !f.type.startsWith('image/')) return;
+  const url = URL.createObjectURL(f);
+  const im = new Image();
+  im.onload = () => {
+    image = im;
+    $('thumb').src = url; $('thumb').classList.remove('hidden');
+    $('clearImg').classList.remove('hidden'); $('dropHint').classList.add('hidden');
+    $('drop').classList.add('has');
+    set({ mode: 'image' });
+  };
+  im.src = url;
+}
+$('file').onchange = e => loadImageFile(e.target.files[0]);
+$('clearImg').onclick = e => {
+  e.preventDefault();
+  image = null; $('file').value = '';
+  $('thumb').classList.add('hidden'); $('clearImg').classList.add('hidden');
+  $('dropHint').classList.remove('hidden'); $('drop').classList.remove('has');
+  render();
+};
+$('drop').ondragover = e => e.preventDefault();
+$('drop').ondrop = e => { e.preventDefault(); loadImageFile(e.dataTransfer.files[0]); };
+
+let toastTimer;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+// ---- Bluetooth ----
+const printer = { device: null, write: null, noResp: false };
+
+function connState(state, name) {
+  $('conn').dataset.state = state;
+  if (name) $('connName').textContent = name;
+}
+
+async function attach() {
+  connState('busy');
+  const server = await printer.device.gatt.connect();
+  let service = null;
+  for (const uuid of M110.SERVICES) {
+    try { service = await server.getPrimaryService(uuid); break; } catch {}
+  }
+  if (!service) throw new Error('Printer service not found');
+  printer.write = await service.getCharacteristic(M110.WRITE_CHAR);
+  printer.noResp = printer.write.properties.writeWithoutResponse;
+  try {
+    const n = await service.getCharacteristic(M110.NOTIFY_CHAR);
+    await n.startNotifications();
+    n.addEventListener('characteristicvaluechanged', e => console.debug('M110 notify', new Uint8Array(e.target.value.buffer)));
+  } catch {}
+  connState('on', printer.device.name || 'M110');
+}
+
+async function connect() {
+  if (!navigator.bluetooth) { toast('Bluetooth needs Chrome on Android or desktop, over https'); return false; }
+  try {
+    printer.device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'M' }, { namePrefix: 'Phomemo' }, { services: [0xff00] }],
+      optionalServices: M110.SERVICES,
+    });
+    printer.device.addEventListener('gattserverdisconnected', () => { printer.write = null; connState('off'); });
+    await attach();
+    return true;
+  } catch (e) {
+    connState(printer.write ? 'on' : 'off');
+    if (e.name !== 'NotFoundError') { connState('err'); toast(e.message); }
+    return false;
+  }
+}
+
+async function ensureConnected() {
+  if (printer.write && printer.device?.gatt.connected) return true;
+  if (printer.device) { try { await attach(); return true; } catch {} }
+  return connect();
+}
+
+async function send(bytes) {
+  const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (printer.noResp) await printer.write.writeValueWithoutResponse(buf);
+  else await printer.write.writeValue(buf);
+}
+
+// The M110 discards the job if header, data and footer arrive as one unpaced stream.
+async function printJob(bm, onProgress) {
+  await send(M110.speed(5)); await sleep(30);
+  await send(M110.density(S.density)); await sleep(30);
+  await send(M110.media(S.media)); await sleep(30);
+  await send(M110.raster(bm.wb, bm.h));
+  for (let i = 0; i < bm.data.length; i += M110.CHUNK) {
+    await send(bm.data.subarray(i, i + M110.CHUNK));
+    await sleep(20);
+    onProgress(Math.min(1, (i + M110.CHUNK) / bm.data.length));
+  }
+  await sleep(300);
+  await send(M110.FOOTER);
+  await sleep(500);
+}
+
+$('conn').onclick = () => connect();
+
+$('print').onclick = async () => {
+  if (!bitmap) return;
+  const btn = $('print');
+  btn.disabled = true;
+  try {
+    if (!(await ensureConnected())) return;
+    $('progress').classList.add('show');
+    const copies = S.copies;
+    for (let c = 0; c < copies; c++) {
+      $('printLabel').textContent = copies > 1 ? `${c + 1} / ${copies}` : 'Printing';
+      await printJob(bitmap, p => $('bar').style.width = ((c + p) / copies * 100) + '%');
+    }
+  } catch (e) {
+    connState('err'); toast(e.message || 'Print failed');
+  } finally {
+    btn.disabled = false;
+    $('progress').classList.remove('show'); $('bar').style.width = '0';
+    syncUI();
+  }
+};
+
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
+syncUI();
+document.fonts?.ready.then(render);
+render();
+</script>
+</body>
+</html>
