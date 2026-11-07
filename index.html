@@ -107,6 +107,8 @@ main {
   display: block; max-width: 100%;
   background: var(--label);
   border-radius: 6px;
+  outline: 3px solid var(--muted);
+  outline-offset: 2px;
   box-shadow: 0 1px 2px rgba(0,0,0,.15), 0 6px 18px rgba(0,0,0,.12);
   image-rendering: pixelated;
 }
@@ -162,6 +164,24 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .drop.has { justify-content: space-between; border-style: solid; color: var(--text); }
 .drop img { max-height: 64px; max-width: 50%; border-radius: 4px; }
 
+.search {
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 12px; border-radius: 10px; background: var(--surface-2);
+}
+.search input { flex: 1; min-width: 0; height: 44px; border: 0; background: transparent; font-size: 16px; }
+.search input:focus { outline: none; }
+.search:focus-within { outline: 2px solid var(--accent); outline-offset: -1px; }
+.results { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 320px; overflow-y: auto; }
+.results button {
+  width: 100%; display: grid; gap: 2px; text-align: left;
+  padding: 10px 12px; border: 0; border-radius: 8px; background: transparent; cursor: pointer;
+}
+.results button:hover { background: var(--surface-2); }
+.results button[aria-pressed="true"] { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
+.results .sub { font-size: 13px; color: var(--muted); }
+.note { color: var(--muted); font-size: 14px; padding: 4px 2px; }
+.note a { color: var(--accent); }
+
 .size-custom { display: none; }
 .size-custom.show { display: flex; }
 .x { color: var(--muted); }
@@ -216,6 +236,9 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   <symbol id="i-invert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.1 7-12a7 7 0 0 0-14 0c0 5.9 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></symbol>
   <symbol id="i-dots" viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="9" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="9" cy="14" r="1.6"/><circle cx="15" cy="15" r="1.6"/><circle cx="6" cy="19" r="1.6"/><circle cx="18" cy="19" r="1.6"/></symbol>
 </svg>
 
@@ -237,6 +260,22 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
       <div class="seg full" role="group" aria-label="Content">
         <button data-mode="text" aria-pressed="true" title="Text"><svg><use href="#i-text"/></svg></button>
         <button data-mode="image" aria-pressed="false" title="Image"><svg><use href="#i-image"/></svg></button>
+        <button data-mode="homebox" aria-pressed="false" title="Homebox" class="hidden" id="hbTab"><svg><use href="#i-box"/></svg></button>
+      </div>
+
+      <div id="hbPane" class="group hidden">
+        <div class="row">
+          <div class="seg" role="group" aria-label="Kind">
+            <button data-kind="item" title="Items"><svg><use href="#i-box"/></svg></button>
+            <button data-kind="location" title="Locations"><svg><use href="#i-pin"/></svg></button>
+          </div>
+          <label class="search grow">
+            <svg><use href="#i-search"/></svg>
+            <input type="search" id="hbQuery" placeholder="Search Homebox" autocomplete="off">
+          </label>
+        </div>
+        <ul class="results" id="hbResults"></ul>
+        <div class="note hidden" id="hbNote"></div>
       </div>
 
       <div id="textPane" class="group">
@@ -356,7 +395,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const DEFAULTS = {
   mode: 'text', text: '', align: 'center', bold: true, border: false, invertText: false,
   font: 'system-ui, sans-serif', fit: true, fontSize: 48,
-  dither: true, invertImg: false, bright: 0,
+  dither: true, invertImg: false, bright: 0, hbKind: 'item',
   size: '40x30', cw: 40, ch: 30, media: 10, density: 10, copies: 1,
 };
 let S = { ...DEFAULTS };
@@ -420,11 +459,11 @@ function drawText(ctx, w, h) {
   return size;
 }
 
-function drawImage(ctx, w, h) {
-  if (!image) return;
-  const r = Math.min(w / image.width, h / image.height);
-  const dw = image.width * r, dh = image.height * r;
-  ctx.drawImage(image, (w - dw) / 2, (h - dh) / 2, dw, dh);
+function drawImage(ctx, w, h, img) {
+  if (!img) return;
+  const r = Math.min(w / img.width, h / img.height);
+  const dw = img.width * r, dh = img.height * r;
+  ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
 }
 
 // Returns 1-bit rows packed MSB-first, 1 = black, as the M110 expects.
@@ -468,7 +507,8 @@ function render() {
   const ctx = work.getContext('2d', { willReadFrequently: true });
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
   let used = null;
-  if (S.mode === 'text') used = drawText(ctx, w, h); else drawImage(ctx, w, h);
+  if (S.mode === 'text') used = drawText(ctx, w, h);
+  else drawImage(ctx, w, h, S.mode === 'image' ? image : hb.image);
   bitmap = toBitmap(ctx, w, h, S.mode === 'image' && S.dither);
 
   const pv = $('preview');
@@ -494,6 +534,8 @@ function syncUI() {
   document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === S.mode));
   $('textPane').classList.toggle('hidden', S.mode !== 'text');
   $('imagePane').classList.toggle('hidden', S.mode !== 'image');
+  $('hbPane').classList.toggle('hidden', S.mode !== 'homebox');
+  document.querySelectorAll('[data-kind]').forEach(b => b.setAttribute('aria-pressed', b.dataset.kind === S.hbKind));
   document.querySelectorAll('[data-align]').forEach(b => b.setAttribute('aria-pressed', b.dataset.align === S.align));
   for (const k of ['bold', 'border', 'invertText', 'fit', 'dither', 'invertImg']) $(k).setAttribute('aria-pressed', !!S[k]);
   $('text').value = S.text;
@@ -512,7 +554,11 @@ function syncUI() {
 
 function set(patch) { Object.assign(S, patch); save(); syncUI(); render(); }
 
-document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => set({ mode: b.dataset.mode }));
+document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => {
+  set({ mode: b.dataset.mode });
+  if (S.mode === 'homebox') hbSearch();
+});
+document.querySelectorAll('[data-kind]').forEach(b => b.onclick = () => { set({ hbKind: b.dataset.kind }); hbSearch(); });
 document.querySelectorAll('[data-align]').forEach(b => b.onclick = () => set({ align: b.dataset.align }));
 for (const k of ['bold', 'border', 'invertText', 'fit', 'dither', 'invertImg']) $(k).onclick = () => set({ [k]: !S[k] });
 $('text').oninput = e => set({ text: e.target.value });
@@ -632,6 +678,7 @@ $('conn').onclick = () => connect();
 
 $('print').onclick = async () => {
   if (!bitmap) return;
+  if (S.mode === 'homebox' && !hb.image) { toast('Pick something from Homebox first'); return; }
   const btn = $('print');
   btn.disabled = true;
   try {
@@ -651,6 +698,113 @@ $('print').onclick = async () => {
   }
 };
 
+// ---- Homebox: only offered when this page is served from the Homebox domain ----
+const hb = { available: false, image: null, selected: null };
+let hbTimer, hbSeq = 0;
+
+async function hbApi(path) {
+  const r = await fetch('/api/v1' + path, { credentials: 'same-origin' });
+  if (r.status === 401) throw Object.assign(new Error('Signed out'), { signin: true });
+  if (!r.ok) throw new Error(`Homebox error ${r.status}`);
+  return r;
+}
+
+function hbNote(msg, signin) {
+  const n = $('hbNote');
+  n.replaceChildren();
+  n.classList.toggle('hidden', !msg);
+  if (!msg) return;
+  n.append(msg);
+  if (signin) {
+    const a = Object.assign(document.createElement('a'), { href: '/', target: '_blank', textContent: 'Sign in' });
+    n.append(' ', a);
+  }
+}
+
+function hbError(e) { hbNote(e.signin ? 'Signed out of Homebox.' : e.message, e.signin); }
+
+function hbRenderResults(items) {
+  const list = $('hbResults');
+  list.replaceChildren(...items.map(it => {
+    const btn = document.createElement('button');
+    btn.dataset.id = it.id;
+    btn.setAttribute('aria-pressed', hb.selected?.id === it.id);
+    const name = document.createElement('span');
+    name.textContent = it.name;
+    const sub = document.createElement('span');
+    sub.className = 'sub';
+    sub.textContent = [it.parent?.name, it.assetId ? '#' + String(it.assetId).replace(/"/g, '') : ''].filter(Boolean).join('  ·  ');
+    btn.append(name, sub);
+    btn.onclick = () => hbSelect({ kind: S.hbKind, id: it.id });
+    const li = document.createElement('li');
+    li.append(btn);
+    return li;
+  }));
+}
+
+async function hbSearch() {
+  if (!hb.available) return;
+  const seq = ++hbSeq;
+  const q = $('hbQuery').value.trim();
+  const params = new URLSearchParams({ pageSize: '25', orderBy: q ? 'name' : 'updatedAt' });
+  if (q) params.set('q', q);
+  if (S.hbKind === 'location') params.set('isLocation', 'true');
+  try {
+    const data = await (await hbApi('/entities?' + params)).json();
+    if (seq !== hbSeq) return;
+    hbNote(data.items.length ? '' : 'No matches');
+    hbRenderResults(data.items);
+  } catch (e) {
+    if (seq !== hbSeq) return;
+    hbRenderResults([]);
+    hbError(e);
+  }
+}
+
+// kind is a labelmaker route: item, location or asset.
+async function hbSelect(target) {
+  hb.selected = target;
+  document.querySelectorAll('#hbResults button').forEach(b => b.setAttribute('aria-pressed', b.dataset.id === target.id));
+  try {
+    const blob = await (await hbApi(`/labelmaker/${target.kind}/${encodeURIComponent(target.id)}`)).blob();
+    const img = await createImageBitmap(blob);
+    if (hb.selected !== target) return;
+    hb.image = img;
+    if (S.mode !== 'homebox') set({ mode: 'homebox' }); else render();
+  } catch (e) {
+    hbError(e);
+  }
+}
+
+// Android share sheet lands here with the Homebox page link in url or text.
+function hbSharedTarget() {
+  const p = new URLSearchParams(location.search);
+  const shared = [p.get('url'), p.get('text'), p.get('title')].filter(Boolean).join(' ');
+  const m = shared.match(/\/(item|location|a)\/([\w-]+)/);
+  if (!m) return null;
+  return { kind: m[1] === 'a' ? 'asset' : m[1], id: m[2] };
+}
+
+async function hbInit() {
+  try {
+    const r = await fetch('/api/v1/status');
+    hb.available = r.ok && (await r.json()).title === 'Homebox';
+  } catch {}
+  $('hbTab').classList.toggle('hidden', !hb.available);
+  if (!hb.available) {
+    if (S.mode === 'homebox') set({ mode: 'text' });
+    return;
+  }
+  const shared = hbSharedTarget();
+  if (shared) {
+    history.replaceState(null, '', location.pathname);
+    hbSelect(shared);
+  }
+  if (S.mode === 'homebox' || shared) hbSearch();
+}
+
+$('hbQuery').oninput = () => { clearTimeout(hbTimer); hbTimer = setTimeout(hbSearch, 250); };
+
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
@@ -658,6 +812,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 syncUI();
 document.fonts?.ready.then(render);
 render();
+hbInit();
 </script>
 </body>
 </html>
