@@ -17,6 +17,7 @@
   --muted: #6b7280;
   --line: #d9dce2;
   --accent: #2563eb;
+  --star: #fbbf24;
   --accent-text: #ffffff;
   --ok: #16a34a;
   --warn: #d97706;
@@ -212,11 +213,28 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .cam-done:disabled { background: rgba(255,255,255,.16); opacity: .5; }
 .cam-shutter { width: 76px; height: 76px; border-radius: 50%; border: 4px solid #fff; background: #fff; box-shadow: inset 0 0 0 4px #000; }
 .cam-shutter:active { transform: scale(.93); }
-.cam-view { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; background: #000; }
-.cam-view-track { flex: 1; min-height: 0; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
-.cam-view-track::-webkit-scrollbar { display: none; }
-.cam-view-track img { flex: none; width: 100%; height: 100%; object-fit: contain; scroll-snap-align: center; }
-.cam-view .cam-bar span { font-weight: 600; font-variant-numeric: tabular-nums; }
+.viewer { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; background: #000; color: #fff; }
+.viewer-track { flex: 1; min-height: 0; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.viewer-track::-webkit-scrollbar { display: none; }
+.viewer-track img { flex: none; width: 100%; height: 100%; object-fit: contain; scroll-snap-align: center; }
+.viewer .cam-bar span { font-weight: 600; font-variant-numeric: tabular-nums; }
+.viewer .cam-btn[aria-pressed="true"] { color: var(--star); }
+.viewer .cam-btn[aria-pressed="true"] { --star-fill: currentColor; }
+
+.gallery { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 4px; }
+.gallery div { position: relative; flex: none; }
+.gallery img {
+  display: block; width: 72px; height: 72px; object-fit: cover; cursor: pointer;
+  border-radius: 8px; background: var(--surface-2);
+}
+.gallery button {
+  position: absolute; right: 4px; bottom: 4px; width: 28px; height: 28px; padding: 0;
+  display: grid; place-items: center; border: 0; border-radius: 50%;
+  background: rgba(0,0,0,.55); color: #fff; cursor: pointer;
+}
+.gallery button svg { width: 16px; height: 16px; }
+.gallery button[aria-pressed="true"] { color: var(--star); }
+.gallery button[aria-pressed="true"] { --star-fill: currentColor; }
 .note { color: var(--muted); font-size: 14px; padding: 4px 2px; }
 .note a { color: var(--accent); }
 
@@ -248,7 +266,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .1s; }
 
 .toast {
-  position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%) translateY(20px);
+  position: fixed; z-index: 40; left: 50%; bottom: 96px; transform: translateX(-50%) translateY(20px);
   max-width: calc(100% - 32px);
   padding: 10px 14px; border-radius: 10px;
   background: var(--text); color: var(--bg); font-size: 14px;
@@ -279,7 +297,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.1 7-12a7 7 0 0 0-14 0c0 5.9 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></symbol>
   <symbol id="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5"/></symbol>
-  <symbol id="i-check"viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path style="fill: var(--star-fill, none)" d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2-5.5-2.9-5.5 2.9 1-6.2L3 9.6l6.2-.9z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
   <symbol id="i-dots" viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="9" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="9" cy="14" r="1.6"/><circle cx="15" cy="15" r="1.6"/><circle cx="6" cy="19" r="1.6"/><circle cx="18" cy="19" r="1.6"/></symbol>
 </svg>
 
@@ -322,6 +341,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
             <svg><use href="#i-image"/></svg>
           </label>
         </div>
+        <div class="gallery hidden" id="hbGallery"></div>
         <div class="note hidden" id="hbNote"></div>
         <ul class="results" id="hbResults"></ul>
       </div>
@@ -428,13 +448,14 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     <button class="cam-shutter" id="camShutter" aria-label="Take photo"></button>
     <button class="cam-btn cam-done" id="camDone" aria-label="Upload"><svg><use href="#i-check"/></svg><span id="camCount">0</span></button>
   </div>
-  <div class="cam-view hidden" id="camView">
-    <div class="cam-view-track" id="camViewTrack"></div>
-    <div class="cam-bar">
-      <button class="cam-btn" id="camViewClose" aria-label="Back to camera"><svg><use href="#i-x"/></svg></button>
-      <span id="camViewPos"></span>
-      <button class="cam-btn" id="camViewDel" aria-label="Delete photo"><svg><use href="#i-trash"/></svg></button>
-    </div>
+</div>
+
+<div class="viewer hidden" id="viewer">
+  <div class="viewer-track" id="viewerTrack"></div>
+  <div class="cam-bar">
+    <button class="cam-btn" id="viewerClose" aria-label="Close"><svg><use href="#i-x"/></svg></button>
+    <span id="viewerPos"></span>
+    <button class="cam-btn" id="viewerAction"><svg><use/></svg></button>
   </div>
 </div>
 
@@ -824,8 +845,44 @@ $('print').onclick = async () => {
   }
 };
 
+// ---- Full-screen photo viewer: swipe between photos, one action button (delete a shot, star a Homebox photo) ----
+const viewer = { count: 0, action: null };
+const viewerIsOpen = () => !$('viewer').classList.contains('hidden');
+const viewerIndex = () => { const t = $('viewerTrack'); return Math.round(t.scrollLeft / t.clientWidth) || 0; };
+
+function viewerRender(srcs, at) {
+  const t = $('viewerTrack');
+  viewer.count = srcs.length;
+  t.replaceChildren(...srcs.map(src => Object.assign(document.createElement('img'), { src, alt: '' })));
+  t.scrollLeft = Math.min(at, srcs.length - 1) * t.clientWidth;
+  viewerPos();
+}
+
+function viewerPos() {
+  const i = viewerIndex();
+  $('viewerPos').textContent = `${i + 1} / ${viewer.count}`;
+  const pressed = viewer.action?.pressed?.(i);
+  if (pressed === undefined) $('viewerAction').removeAttribute('aria-pressed');
+  else $('viewerAction').setAttribute('aria-pressed', pressed);
+}
+
+// action: { icon, label, run(index), pressed?(index) }
+function viewerOpen(srcs, at, action) {
+  viewer.action = action;
+  $('viewerAction').setAttribute('aria-label', action.label);
+  $('viewerAction').querySelector('use').setAttribute('href', '#' + action.icon);
+  $('viewer').classList.remove('hidden');
+  viewerRender(srcs, at);
+  // Its own history entry so Android's back gesture closes the viewer only.
+  history.pushState({ viewer: true }, '');
+}
+
+$('viewerTrack').onscroll = viewerPos;
+$('viewerClose').onclick = () => history.back();
+$('viewerAction').onclick = () => viewer.action.run(viewerIndex());
+
 // ---- Homebox: only offered when this page is served from the Homebox domain ----
-const hb = { available: false, label: null };
+const hb = { available: false, label: null, photos: [] };
 let hbTimer, hbSeq = 0;
 
 async function hbApi(path, init) {
@@ -902,8 +959,68 @@ function hbShow(label) {
   hb.label = label;
   $('hbPhotosRow').classList.remove('hidden');
   document.querySelectorAll('#hbResults button').forEach(b => b.setAttribute('aria-pressed', b.dataset.id === label.id));
+  hbLoadPhotos();
   if (S.mode !== 'homebox') set({ mode: 'homebox' }); else render();
 }
+
+const hbAttachURL = (entityId, attId) =>
+  `/api/v1/entities/${encodeURIComponent(entityId)}/attachments/${encodeURIComponent(attId)}`;
+
+async function hbLoadPhotos() {
+  const target = hb.label;
+  hb.photos = [];
+  hbRenderGallery();
+  try {
+    const e = await (await hbApi('/entities/' + encodeURIComponent(target.id))).json();
+    if (hb.label !== target) return;
+    hb.photos = (e.attachments || []).filter(a => a.type === 'photo')
+      .map(a => ({ id: a.id, title: a.title, primary: a.primary, thumb: a.thumbnail?.id || a.id }));
+    hbRenderGallery();
+  } catch (err) {
+    if (hb.label === target) hbError(err);
+  }
+}
+
+function hbRenderGallery() {
+  const g = $('hbGallery');
+  g.classList.toggle('hidden', !hb.photos.length);
+  g.replaceChildren(...hb.photos.map((p, i) => {
+    const wrap = document.createElement('div');
+    const img = Object.assign(document.createElement('img'), { src: hbAttachURL(hb.label.id, p.thumb), alt: p.title, loading: 'lazy' });
+    img.onclick = () => viewerOpen(hb.photos.map(q => hbAttachURL(hb.label.id, q.id)), i, hbStarAction);
+    const star = document.createElement('button');
+    star.setAttribute('aria-label', 'Make main photo');
+    star.setAttribute('aria-pressed', p.primary);
+    star.innerHTML = '<svg><use href="#i-star"/></svg>';
+    star.onclick = () => hbSetPrimary(i);
+    wrap.append(img, star);
+    return wrap;
+  }));
+}
+
+// Homebox clears the old primary itself when one photo is set primary.
+async function hbSetPrimary(i) {
+  const target = hb.label, p = hb.photos[i];
+  if (!p || p.primary) return;
+  try {
+    await hbApi(`/entities/${encodeURIComponent(target.id)}/attachments/${encodeURIComponent(p.id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'photo', title: p.title, primary: true }),
+    });
+  } catch (e) {
+    toast(e.signin ? 'Signed out of Homebox' : 'Could not set main photo');
+    hbError(e);
+    return;
+  }
+  if (hb.label !== target) return;
+  hb.photos.forEach(q => { q.primary = q === p; });
+  hbRenderGallery();
+  if (viewerIsOpen()) viewerPos();
+  toast('Main photo set');
+}
+
+const hbStarAction = { icon: 'i-star', label: 'Make main photo', run: hbSetPrimary, pressed: i => !!hb.photos[i]?.primary };
 
 async function hbOpenShared({ kind, id }) {
   try {
@@ -997,6 +1114,7 @@ async function hbUploadPhotos(files) {
   btn.removeAttribute('aria-busy');
   $('hbPhotosLabel').textContent = 'Add photos';
   if (added) toast(`${added} photo${added > 1 ? 's' : ''} added to ${target.name}`);
+  if (added && hb.label === target) hbLoadPhotos();
   if (failed.length) hbNote(`Not uploaded: ${failed.join(', ')}`);
 }
 
@@ -1033,7 +1151,6 @@ function camStop() {
   $('camVideo').srcObject = null;
   cam.shots.forEach(s => URL.revokeObjectURL(s.url));
   cam.shots = [];
-  $('camView').classList.add('hidden');
   $('cam').classList.add('hidden');
 }
 
@@ -1041,7 +1158,7 @@ function camRenderShots() {
   $('camShots').replaceChildren(...cam.shots.map((s, i) => {
     const wrap = document.createElement('div');
     const img = Object.assign(document.createElement('img'), { src: s.url, alt: '' });
-    img.onclick = () => camViewOpen(i);
+    img.onclick = () => viewerOpen(cam.shots.map(s => s.url), i, camDeleteAction);
     const del = document.createElement('button');
     del.setAttribute('aria-label', 'Remove');
     del.innerHTML = '<svg><use href="#i-x"/></svg>';
@@ -1075,36 +1192,15 @@ async function camSnap() {
   camRenderShots();
 }
 
-// Full-screen review of the shots so far: swipe between them, delete the bad ones.
-const camViewIsOpen = () => !$('camView').classList.contains('hidden');
-const camViewIndex = () => { const t = $('camViewTrack'); return Math.round(t.scrollLeft / t.clientWidth) || 0; };
-
-function camViewRender(at) {
-  const t = $('camViewTrack');
-  t.replaceChildren(...cam.shots.map(s => Object.assign(document.createElement('img'), { src: s.url, alt: '' })));
-  t.scrollLeft = Math.min(at, cam.shots.length - 1) * t.clientWidth;
-  camViewPos();
-}
-
-function camViewPos() {
-  $('camViewPos').textContent = `${camViewIndex() + 1} / ${cam.shots.length}`;
-}
-
-function camViewOpen(i) {
-  $('camView').classList.remove('hidden');
-  camViewRender(i);
-  history.pushState({ camView: true }, '');
-}
-
-$('camViewTrack').onscroll = camViewPos;
-$('camViewClose').onclick = () => history.back();
-$('camViewDel').onclick = () => {
-  const i = camViewIndex();
-  URL.revokeObjectURL(cam.shots[i].url);
-  cam.shots.splice(i, 1);
-  camRenderShots();
-  if (cam.shots.length) camViewRender(i);
-  else history.back();
+const camDeleteAction = {
+  icon: 'i-trash', label: 'Delete photo',
+  run(i) {
+    URL.revokeObjectURL(cam.shots[i].url);
+    cam.shots.splice(i, 1);
+    camRenderShots();
+    if (cam.shots.length) viewerRender(cam.shots.map(s => s.url), i);
+    else history.back();
+  },
 };
 
 $('hbCamBtn').onclick = camOpen;
@@ -1117,7 +1213,7 @@ $('camDone').onclick = () => {
   hbUploadPhotos(files);
 };
 window.addEventListener('popstate', () => {
-  if (camViewIsOpen()) { $('camView').classList.add('hidden'); return; }
+  if (viewerIsOpen()) { $('viewer').classList.add('hidden'); return; }
   if (!camIsOpen()) return;
   if (cam.shots.length && !confirm(`Discard ${cam.shots.length} photo${cam.shots.length > 1 ? 's' : ''}?`)) {
     history.pushState({ cam: true }, '');
