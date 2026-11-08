@@ -180,6 +180,12 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .results button:hover { background: var(--surface-2); }
 .results button[aria-pressed="true"] { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
 .results .sub { font-size: 13px; color: var(--muted); }
+.photos {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  height: 44px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface); cursor: pointer; font-weight: 600;
+}
+.photos[aria-busy="true"] { pointer-events: none; opacity: .7; }
 .note { color: var(--muted); font-size: 14px; padding: 4px 2px; }
 .note a { color: var(--accent); }
 
@@ -240,6 +246,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   <symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
   <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.1 7-12a7 7 0 0 0-14 0c0 5.9 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/></symbol>
   <symbol id="i-dots" viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="9" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="9" cy="14" r="1.6"/><circle cx="15" cy="15" r="1.6"/><circle cx="6" cy="19" r="1.6"/><circle cx="18" cy="19" r="1.6"/></symbol>
 </svg>
 
@@ -275,8 +282,12 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
             <input type="search" id="hbQuery" placeholder="Search Homebox" autocomplete="off">
           </label>
         </div>
-        <ul class="results" id="hbResults"></ul>
+        <label class="photos hidden" id="hbPhotosBtn">
+          <input type="file" id="hbPhotos" accept="image/*" multiple hidden>
+          <svg><use href="#i-camera"/></svg><span id="hbPhotosLabel">Add photos</span>
+        </label>
         <div class="note hidden" id="hbNote"></div>
+        <ul class="results" id="hbResults"></ul>
       </div>
 
       <div id="textPane" class="group">
@@ -762,9 +773,10 @@ $('print').onclick = async () => {
 const hb = { available: false, label: null };
 let hbTimer, hbSeq = 0;
 
-async function hbApi(path) {
-  const r = await fetch('/api/v1' + path, { credentials: 'same-origin' });
+async function hbApi(path, init) {
+  const r = await fetch('/api/v1' + path, { credentials: 'same-origin', ...init });
   if (r.status === 401) throw Object.assign(new Error('Signed out'), { signin: true });
+  if (r.status === 413) throw new Error('too large');
   if (!r.ok) throw new Error(`Homebox error ${r.status}`);
   return r;
 }
@@ -833,6 +845,7 @@ function hbLabel(e, kind) {
 
 function hbShow(label) {
   hb.label = label;
+  $('hbPhotosBtn').classList.remove('hidden');
   document.querySelectorAll('#hbResults button').forEach(b => b.setAttribute('aria-pressed', b.dataset.id === label.id));
   if (S.mode !== 'homebox') set({ mode: 'homebox' }); else render();
 }
@@ -884,6 +897,55 @@ async function hbInit() {
 }
 
 $('hbQuery').oninput = () => { clearTimeout(hbTimer); hbTimer = setTimeout(hbSearch, 250); };
+
+// Homebox and nginx both cap a request at 10 MB (HBOX_WEB_MAX_UPLOAD_SIZE, client_max_body_size).
+const UPLOAD_LIMIT = 9.5e6;
+
+async function shrinkToLimit(file) {
+  if (file.size <= UPLOAD_LIMIT) return file;
+  const img = await createImageBitmap(file);
+  for (const [side, quality] of [[4000, 0.88], [3000, 0.82], [2000, 0.8]]) {
+    const r = Math.min(1, side / Math.max(img.width, img.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width * r); c.height = Math.round(img.height * r);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', quality));
+    if (blob.size <= UPLOAD_LIMIT) return new File([blob], file.name.replace(/\.[^.]*$/, '') + '.jpg', { type: 'image/jpeg' });
+  }
+  throw new Error('too large');
+}
+
+// One file per request: the Homebox attachment endpoint takes a single file.
+async function hbUploadPhotos(files) {
+  const target = hb.label;
+  if (!target || !files.length) return;
+  const btn = $('hbPhotosBtn');
+  btn.setAttribute('aria-busy', 'true');
+  hbNote('');
+  let added = 0;
+  const failed = [];
+  for (const [i, f] of files.entries()) {
+    $('hbPhotosLabel').textContent = `Uploading ${i + 1} / ${files.length}`;
+    try {
+      const file = await shrinkToLimit(f);
+      const form = new FormData();
+      form.append('file', file, file.name);
+      form.append('name', file.name);
+      form.append('type', 'photo');
+      await hbApi(`/entities/${encodeURIComponent(target.id)}/attachments`, { method: 'POST', body: form });
+      added++;
+    } catch (e) {
+      if (e.signin) { hbError(e); break; }
+      failed.push(`${f.name} (${e.message})`);
+    }
+  }
+  btn.removeAttribute('aria-busy');
+  $('hbPhotosLabel').textContent = 'Add photos';
+  if (added) toast(`${added} photo${added > 1 ? 's' : ''} added to ${target.name}`);
+  if (failed.length) hbNote(`Not uploaded: ${failed.join(', ')}`);
+}
+
+$('hbPhotos').onchange = e => { hbUploadPhotos([...e.target.files]); e.target.value = ''; };
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
