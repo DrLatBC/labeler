@@ -182,10 +182,36 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .results .sub { font-size: 13px; color: var(--muted); }
 .photos {
   display: flex; align-items: center; justify-content: center; gap: 8px;
-  height: 44px; border: 1px solid var(--line); border-radius: 10px;
+  height: 40px; border: 1px solid var(--line); border-radius: 10px;
   background: var(--surface); cursor: pointer; font-weight: 600;
 }
-.photos[aria-busy="true"] { pointer-events: none; opacity: .7; }
+#hbPhotosRow[aria-busy="true"] { pointer-events: none; opacity: .7; }
+
+.cam { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; background: #000; color: #fff; }
+.cam video { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
+.cam-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.cam-flash.on { opacity: .6; transition: none; }
+.cam-shots { position: absolute; left: 0; right: 0; bottom: 124px; display: flex; gap: 10px; padding: 8px 16px; overflow-x: auto; }
+.cam-shots div { position: relative; flex: none; }
+.cam-shots img { display: block; width: 56px; height: 56px; object-fit: cover; border-radius: 8px; border: 2px solid #fff; }
+.cam-shots button {
+  position: absolute; top: -7px; right: -7px; width: 24px; height: 24px; padding: 0;
+  display: grid; place-items: center; border: 0; border-radius: 50%; background: #000; color: #fff;
+}
+.cam-shots button svg { width: 14px; height: 14px; }
+.cam-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 24px 28px; padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+.cam-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 52px; height: 52px; padding: 0 14px; border: 0; border-radius: 26px;
+  background: rgba(255,255,255,.16); color: #fff; font-weight: 600; font-size: 16px;
+}
+.cam-done { background: var(--accent); }
+.cam-done:disabled { background: rgba(255,255,255,.16); opacity: .5; }
+.cam-shutter { width: 76px; height: 76px; border-radius: 50%; border: 4px solid #fff; background: #fff; box-shadow: inset 0 0 0 4px #000; }
+.cam-shutter:active { transform: scale(.93); }
 .note { color: var(--muted); font-size: 14px; padding: 4px 2px; }
 .note a { color: var(--accent); }
 
@@ -247,6 +273,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
   <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.1 7-12a7 7 0 0 0-14 0c0 5.9 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></symbol>
   <symbol id="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
   <symbol id="i-dots" viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="9" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="9" cy="14" r="1.6"/><circle cx="15" cy="15" r="1.6"/><circle cx="6" cy="19" r="1.6"/><circle cx="18" cy="19" r="1.6"/></symbol>
 </svg>
 
@@ -282,10 +309,13 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
             <input type="search" id="hbQuery" placeholder="Search Homebox" autocomplete="off">
           </label>
         </div>
-        <label class="photos hidden" id="hbPhotosBtn">
-          <input type="file" id="hbPhotos" accept="image/*" multiple hidden>
-          <svg><use href="#i-camera"/></svg><span id="hbPhotosLabel">Add photos</span>
-        </label>
+        <div class="row hidden" id="hbPhotosRow">
+          <button class="photos grow" id="hbCamBtn"><svg><use href="#i-camera"/></svg><span id="hbPhotosLabel">Add photos</span></button>
+          <label class="icon-btn" title="From gallery">
+            <input type="file" id="hbPhotos" accept="image/*" multiple hidden>
+            <svg><use href="#i-image"/></svg>
+          </label>
+        </div>
         <div class="note hidden" id="hbNote"></div>
         <ul class="results" id="hbResults"></ul>
       </div>
@@ -382,6 +412,17 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   </div>
   <div class="inner"><div class="progress grow" id="progress" style="flex:1"><i id="bar"></i></div></div>
 </footer>
+
+<div class="cam hidden" id="cam">
+  <video id="camVideo" playsinline muted autoplay></video>
+  <div class="cam-flash" id="camFlash"></div>
+  <div class="cam-shots" id="camShots"></div>
+  <div class="cam-bar">
+    <button class="cam-btn" id="camClose" aria-label="Cancel"><svg><use href="#i-x"/></svg></button>
+    <button class="cam-shutter" id="camShutter" aria-label="Take photo"></button>
+    <button class="cam-btn cam-done" id="camDone" aria-label="Upload"><svg><use href="#i-check"/></svg><span id="camCount">0</span></button>
+  </div>
+</div>
 
 <div class="toast" id="toast" role="status"></div>
 
@@ -845,7 +886,7 @@ function hbLabel(e, kind) {
 
 function hbShow(label) {
   hb.label = label;
-  $('hbPhotosBtn').classList.remove('hidden');
+  $('hbPhotosRow').classList.remove('hidden');
   document.querySelectorAll('#hbResults button').forEach(b => b.setAttribute('aria-pressed', b.dataset.id === label.id));
   if (S.mode !== 'homebox') set({ mode: 'homebox' }); else render();
 }
@@ -919,7 +960,7 @@ async function shrinkToLimit(file) {
 async function hbUploadPhotos(files) {
   const target = hb.label;
   if (!target || !files.length) return;
-  const btn = $('hbPhotosBtn');
+  const btn = $('hbPhotosRow');
   btn.setAttribute('aria-busy', 'true');
   hbNote('');
   let added = 0;
@@ -946,6 +987,95 @@ async function hbUploadPhotos(files) {
 }
 
 $('hbPhotos').onchange = e => { hbUploadPhotos([...e.target.files]); e.target.value = ''; };
+
+// ---- Live camera: shoot several photos in a row, then upload them together ----
+const cam = { stream: null, capture: null, shots: [] };
+const camIsOpen = () => !$('cam').classList.contains('hidden');
+
+async function camOpen() {
+  if (!hb.label) return;
+  try {
+    cam.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 4096 }, height: { ideal: 3072 } },
+      audio: false,
+    });
+  } catch (e) {
+    toast(e.name === 'NotAllowedError' ? 'Camera permission denied' : 'Camera unavailable');
+    return;
+  }
+  const track = cam.stream.getVideoTracks()[0];
+  cam.capture = 'ImageCapture' in window ? new ImageCapture(track) : null;
+  $('camVideo').srcObject = cam.stream;
+  cam.shots = [];
+  camRenderShots();
+  $('cam').classList.remove('hidden');
+  // The camera gets its own history entry so Android's back gesture closes it instead of leaving the app.
+  history.pushState({ cam: true }, '');
+}
+
+function camStop() {
+  cam.stream?.getTracks().forEach(t => t.stop());
+  cam.stream = null;
+  $('camVideo').srcObject = null;
+  cam.shots.forEach(s => URL.revokeObjectURL(s.url));
+  cam.shots = [];
+  $('cam').classList.add('hidden');
+}
+
+function camRenderShots() {
+  $('camShots').replaceChildren(...cam.shots.map((s, i) => {
+    const wrap = document.createElement('div');
+    const img = Object.assign(document.createElement('img'), { src: s.url, alt: '' });
+    const del = document.createElement('button');
+    del.setAttribute('aria-label', 'Remove');
+    del.innerHTML = '<svg><use href="#i-x"/></svg>';
+    del.onclick = () => { URL.revokeObjectURL(s.url); cam.shots.splice(i, 1); camRenderShots(); };
+    wrap.append(img, del);
+    return wrap;
+  }));
+  $('camShots').scrollLeft = $('camShots').scrollWidth;
+  $('camCount').textContent = cam.shots.length;
+  $('camDone').disabled = !cam.shots.length;
+}
+
+async function camSnap() {
+  if (!cam.stream) return;
+  const flash = $('camFlash');
+  flash.classList.add('on');
+  requestAnimationFrame(() => requestAnimationFrame(() => flash.classList.remove('on')));
+  // takePhoto gives the sensor's full resolution; a video frame is the fallback when it is missing or busy.
+  let blob = null;
+  try { if (cam.capture) blob = await cam.capture.takePhoto(); } catch {}
+  if (!blob) {
+    const v = $('camVideo');
+    const c = document.createElement('canvas');
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext('2d').drawImage(v, 0, 0);
+    blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.92));
+  }
+  if (!cam.stream) return;
+  const file = new File([blob], `photo-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
+  cam.shots.push({ file, url: URL.createObjectURL(blob) });
+  camRenderShots();
+}
+
+$('hbCamBtn').onclick = camOpen;
+$('camShutter').onclick = camSnap;
+$('camClose').onclick = () => history.back();
+$('camDone').onclick = () => {
+  const files = cam.shots.map(s => s.file);
+  camStop();
+  history.back();
+  hbUploadPhotos(files);
+};
+window.addEventListener('popstate', () => {
+  if (!camIsOpen()) return;
+  if (cam.shots.length && !confirm(`Discard ${cam.shots.length} photo${cam.shots.length > 1 ? 's' : ''}?`)) {
+    history.pushState({ cam: true }, '');
+    return;
+  }
+  camStop();
+});
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
