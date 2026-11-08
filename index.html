@@ -236,6 +236,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   display: grid; place-items: center; border: 0; border-radius: 50%;
   background: rgba(0,0,0,.55); color: #fff; cursor: pointer;
 }
+.gallery button.del { top: 4px; bottom: auto; }
 .gallery button svg { width: 16px; height: 16px; }
 .gallery button[aria-pressed="true"] { color: var(--star); }
 .gallery button[aria-pressed="true"] { --star-fill: currentColor; }
@@ -974,6 +975,7 @@ function hbShow(label) {
 
 const hbAttachURL = (entityId, attId) =>
   `/api/v1/entities/${encodeURIComponent(entityId)}/attachments/${encodeURIComponent(attId)}`;
+const hbPhotoURLs = () => hb.photos.map(p => hbAttachURL(hb.label.id, p.id));
 
 async function hbLoadPhotos() {
   const target = hb.label;
@@ -996,13 +998,18 @@ function hbRenderGallery() {
   g.replaceChildren(...hb.photos.map((p, i) => {
     const wrap = document.createElement('div');
     const img = Object.assign(document.createElement('img'), { src: hbAttachURL(hb.label.id, p.thumb), alt: p.title, loading: 'lazy' });
-    img.onclick = () => viewerOpen(hb.photos.map(q => hbAttachURL(hb.label.id, q.id)), i, [hbStarAction]);
+    img.onclick = () => viewerOpen(hbPhotoURLs(), i, [hbStarAction, hbDeleteAction]);
+    const del = document.createElement('button');
+    del.className = 'del';
+    del.setAttribute('aria-label', 'Delete photo');
+    del.innerHTML = '<svg><use href="#i-x"/></svg>';
+    del.onclick = () => hbDeletePhoto(i);
     const star = document.createElement('button');
     star.setAttribute('aria-label', 'Make main photo');
     star.setAttribute('aria-pressed', p.primary);
     star.innerHTML = '<svg><use href="#i-star"/></svg>';
     star.onclick = () => hbSetPrimary(i);
-    wrap.append(img, star);
+    wrap.append(img, del, star);
     return wrap;
   }));
 }
@@ -1011,6 +1018,7 @@ function hbRenderGallery() {
 async function hbSetPrimary(i) {
   const target = hb.label, p = hb.photos[i];
   if (!p || p.primary) return;
+  hbNote('');
   try {
     await hbApi(`/entities/${encodeURIComponent(target.id)}/attachments/${encodeURIComponent(p.id)}`, {
       method: 'PUT',
@@ -1030,6 +1038,33 @@ async function hbSetPrimary(i) {
 }
 
 const hbStarAction = { icon: 'i-star', label: 'Make main photo', run: hbSetPrimary, pressed: i => !!hb.photos[i]?.primary };
+
+// Homebox leaves an item with no main photo when the main one is deleted, so the next one takes over here.
+async function hbDeletePhoto(i) {
+  const target = hb.label, p = hb.photos[i];
+  if (!p || p.deleting || !confirm('Delete this photo from Homebox?')) return;
+  p.deleting = true;
+  hbNote('');
+  try {
+    await hbApi(`/entities/${encodeURIComponent(target.id)}/attachments/${encodeURIComponent(p.id)}`, { method: 'DELETE' });
+  } catch (e) {
+    p.deleting = false;
+    toast(e.signin ? 'Signed out of Homebox' : 'Could not delete photo');
+    hbError(e);
+    return;
+  }
+  if (hb.label !== target) return;
+  hb.photos = hb.photos.filter(q => q.id !== p.id);
+  hbRenderGallery();
+  if (viewerIsOpen()) {
+    if (hb.photos.length) viewerRender(hbPhotoURLs(), i);
+    else history.back();
+  }
+  toast('Photo deleted');
+  if (p.primary && hb.photos.length) hbSetPrimary(0);
+}
+
+const hbDeleteAction = { icon: 'i-trash', label: 'Delete photo', run: hbDeletePhoto };
 
 async function hbOpenShared({ kind, id }) {
   try {
