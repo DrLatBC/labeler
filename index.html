@@ -212,6 +212,11 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .cam-done:disabled { background: rgba(255,255,255,.16); opacity: .5; }
 .cam-shutter { width: 76px; height: 76px; border-radius: 50%; border: 4px solid #fff; background: #fff; box-shadow: inset 0 0 0 4px #000; }
 .cam-shutter:active { transform: scale(.93); }
+.cam-view { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; background: #000; }
+.cam-view-track { flex: 1; min-height: 0; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.cam-view-track::-webkit-scrollbar { display: none; }
+.cam-view-track img { flex: none; width: 100%; height: 100%; object-fit: contain; scroll-snap-align: center; }
+.cam-view .cam-bar span { font-weight: 600; font-variant-numeric: tabular-nums; }
 .note { color: var(--muted); font-size: 14px; padding: 4px 2px; }
 .note a { color: var(--accent); }
 
@@ -273,7 +278,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
   <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.1 7-12a7 7 0 0 0-14 0c0 5.9 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></symbol>
   <symbol id="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/></symbol>
-  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5"/></symbol>
+  <symbol id="i-check"viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
   <symbol id="i-dots" viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="9" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="9" cy="14" r="1.6"/><circle cx="15" cy="15" r="1.6"/><circle cx="6" cy="19" r="1.6"/><circle cx="18" cy="19" r="1.6"/></symbol>
 </svg>
 
@@ -421,6 +427,14 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     <button class="cam-btn" id="camClose" aria-label="Cancel"><svg><use href="#i-x"/></svg></button>
     <button class="cam-shutter" id="camShutter" aria-label="Take photo"></button>
     <button class="cam-btn cam-done" id="camDone" aria-label="Upload"><svg><use href="#i-check"/></svg><span id="camCount">0</span></button>
+  </div>
+  <div class="cam-view hidden" id="camView">
+    <div class="cam-view-track" id="camViewTrack"></div>
+    <div class="cam-bar">
+      <button class="cam-btn" id="camViewClose" aria-label="Back to camera"><svg><use href="#i-x"/></svg></button>
+      <span id="camViewPos"></span>
+      <button class="cam-btn" id="camViewDel" aria-label="Delete photo"><svg><use href="#i-trash"/></svg></button>
+    </div>
   </div>
 </div>
 
@@ -1019,6 +1033,7 @@ function camStop() {
   $('camVideo').srcObject = null;
   cam.shots.forEach(s => URL.revokeObjectURL(s.url));
   cam.shots = [];
+  $('camView').classList.add('hidden');
   $('cam').classList.add('hidden');
 }
 
@@ -1026,6 +1041,7 @@ function camRenderShots() {
   $('camShots').replaceChildren(...cam.shots.map((s, i) => {
     const wrap = document.createElement('div');
     const img = Object.assign(document.createElement('img'), { src: s.url, alt: '' });
+    img.onclick = () => camViewOpen(i);
     const del = document.createElement('button');
     del.setAttribute('aria-label', 'Remove');
     del.innerHTML = '<svg><use href="#i-x"/></svg>';
@@ -1059,6 +1075,38 @@ async function camSnap() {
   camRenderShots();
 }
 
+// Full-screen review of the shots so far: swipe between them, delete the bad ones.
+const camViewIsOpen = () => !$('camView').classList.contains('hidden');
+const camViewIndex = () => { const t = $('camViewTrack'); return Math.round(t.scrollLeft / t.clientWidth) || 0; };
+
+function camViewRender(at) {
+  const t = $('camViewTrack');
+  t.replaceChildren(...cam.shots.map(s => Object.assign(document.createElement('img'), { src: s.url, alt: '' })));
+  t.scrollLeft = Math.min(at, cam.shots.length - 1) * t.clientWidth;
+  camViewPos();
+}
+
+function camViewPos() {
+  $('camViewPos').textContent = `${camViewIndex() + 1} / ${cam.shots.length}`;
+}
+
+function camViewOpen(i) {
+  $('camView').classList.remove('hidden');
+  camViewRender(i);
+  history.pushState({ camView: true }, '');
+}
+
+$('camViewTrack').onscroll = camViewPos;
+$('camViewClose').onclick = () => history.back();
+$('camViewDel').onclick = () => {
+  const i = camViewIndex();
+  URL.revokeObjectURL(cam.shots[i].url);
+  cam.shots.splice(i, 1);
+  camRenderShots();
+  if (cam.shots.length) camViewRender(i);
+  else history.back();
+};
+
 $('hbCamBtn').onclick = camOpen;
 $('camShutter').onclick = camSnap;
 $('camClose').onclick = () => history.back();
@@ -1069,6 +1117,7 @@ $('camDone').onclick = () => {
   hbUploadPhotos(files);
 };
 window.addEventListener('popstate', () => {
+  if (camViewIsOpen()) { $('camView').classList.add('hidden'); return; }
   if (!camIsOpen()) return;
   if (cam.shots.length && !confirm(`Discard ${cam.shots.length} photo${cam.shots.length > 1 ? 's' : ''}?`)) {
     history.pushState({ cam: true }, '');
