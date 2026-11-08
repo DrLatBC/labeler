@@ -200,6 +200,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   display: grid; place-items: center; border: 0; border-radius: 50%; background: #000; color: #fff;
 }
 .cam-shots button svg { width: 14px; height: 14px; }
+.cam-shots button.star { top: auto; bottom: -7px; }
+.cam-shots button[aria-pressed="true"] { color: var(--star); --star-fill: currentColor; }
 .cam-bar {
   display: flex; align-items: center; justify-content: space-between;
   padding: 24px 28px; padding-bottom: max(24px, env(safe-area-inset-bottom));
@@ -217,7 +219,9 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .viewer-track { flex: 1; min-height: 0; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
 .viewer-track::-webkit-scrollbar { display: none; }
 .viewer-track img { flex: none; width: 100%; height: 100%; object-fit: contain; scroll-snap-align: center; }
-.viewer .cam-bar span { font-weight: 600; font-variant-numeric: tabular-nums; }
+.viewer .cam-bar { position: relative; }
+.viewer .cam-bar span { position: absolute; left: 50%; transform: translateX(-50%); font-weight: 600; font-variant-numeric: tabular-nums; }
+.viewer-actions { display: flex; gap: 12px; }
 .viewer .cam-btn[aria-pressed="true"] { color: var(--star); }
 .viewer .cam-btn[aria-pressed="true"] { --star-fill: currentColor; }
 
@@ -455,7 +459,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   <div class="cam-bar">
     <button class="cam-btn" id="viewerClose" aria-label="Close"><svg><use href="#i-x"/></svg></button>
     <span id="viewerPos"></span>
-    <button class="cam-btn" id="viewerAction"><svg><use/></svg></button>
+    <div class="viewer-actions" id="viewerActions"></div>
   </div>
 </div>
 
@@ -845,8 +849,8 @@ $('print').onclick = async () => {
   }
 };
 
-// ---- Full-screen photo viewer: swipe between photos, one action button (delete a shot, star a Homebox photo) ----
-const viewer = { count: 0, action: null };
+// ---- Full-screen photo viewer: swipe between photos, with action buttons for the one on screen ----
+const viewer = { count: 0, actions: [] };
 const viewerIsOpen = () => !$('viewer').classList.contains('hidden');
 const viewerIndex = () => { const t = $('viewerTrack'); return Math.round(t.scrollLeft / t.clientWidth) || 0; };
 
@@ -861,16 +865,22 @@ function viewerRender(srcs, at) {
 function viewerPos() {
   const i = viewerIndex();
   $('viewerPos').textContent = `${i + 1} / ${viewer.count}`;
-  const pressed = viewer.action?.pressed?.(i);
-  if (pressed === undefined) $('viewerAction').removeAttribute('aria-pressed');
-  else $('viewerAction').setAttribute('aria-pressed', pressed);
+  viewer.actions.forEach((a, n) => {
+    if (a.pressed) $('viewerActions').children[n].setAttribute('aria-pressed', a.pressed(i));
+  });
 }
 
-// action: { icon, label, run(index), pressed?(index) }
-function viewerOpen(srcs, at, action) {
-  viewer.action = action;
-  $('viewerAction').setAttribute('aria-label', action.label);
-  $('viewerAction').querySelector('use').setAttribute('href', '#' + action.icon);
+// actions: [{ icon, label, run(index), pressed?(index) }]
+function viewerOpen(srcs, at, actions) {
+  viewer.actions = actions;
+  $('viewerActions').replaceChildren(...actions.map(a => {
+    const b = document.createElement('button');
+    b.className = 'cam-btn';
+    b.setAttribute('aria-label', a.label);
+    b.innerHTML = `<svg><use href="#${a.icon}"/></svg>`;
+    b.onclick = () => a.run(viewerIndex());
+    return b;
+  }));
   $('viewer').classList.remove('hidden');
   viewerRender(srcs, at);
   // Its own history entry so Android's back gesture closes the viewer only.
@@ -879,7 +889,6 @@ function viewerOpen(srcs, at, action) {
 
 $('viewerTrack').onscroll = viewerPos;
 $('viewerClose').onclick = () => history.back();
-$('viewerAction').onclick = () => viewer.action.run(viewerIndex());
 
 // ---- Homebox: only offered when this page is served from the Homebox domain ----
 const hb = { available: false, label: null, photos: [] };
@@ -987,7 +996,7 @@ function hbRenderGallery() {
   g.replaceChildren(...hb.photos.map((p, i) => {
     const wrap = document.createElement('div');
     const img = Object.assign(document.createElement('img'), { src: hbAttachURL(hb.label.id, p.thumb), alt: p.title, loading: 'lazy' });
-    img.onclick = () => viewerOpen(hb.photos.map(q => hbAttachURL(hb.label.id, q.id)), i, hbStarAction);
+    img.onclick = () => viewerOpen(hb.photos.map(q => hbAttachURL(hb.label.id, q.id)), i, [hbStarAction]);
     const star = document.createElement('button');
     star.setAttribute('aria-label', 'Make main photo');
     star.setAttribute('aria-pressed', p.primary);
@@ -1088,7 +1097,7 @@ async function shrinkToLimit(file) {
 }
 
 // One file per request: the Homebox attachment endpoint takes a single file.
-async function hbUploadPhotos(files) {
+async function hbUploadPhotos(files, mainFile) {
   const target = hb.label;
   if (!target || !files.length) return;
   const btn = $('hbPhotosRow');
@@ -1104,6 +1113,7 @@ async function hbUploadPhotos(files) {
       form.append('file', file, file.name);
       form.append('name', file.name);
       form.append('type', 'photo');
+      if (f === mainFile) form.append('primary', 'true');
       await hbApi(`/entities/${encodeURIComponent(target.id)}/attachments`, { method: 'POST', body: form });
       added++;
     } catch (e) {
@@ -1158,15 +1168,20 @@ function camRenderShots() {
   $('camShots').replaceChildren(...cam.shots.map((s, i) => {
     const wrap = document.createElement('div');
     const img = Object.assign(document.createElement('img'), { src: s.url, alt: '' });
-    img.onclick = () => viewerOpen(cam.shots.map(s => s.url), i, camDeleteAction);
+    img.onclick = () => viewerOpen(cam.shots.map(s => s.url), i, [camStarAction, camDeleteAction]);
     const del = document.createElement('button');
     del.setAttribute('aria-label', 'Remove');
     del.innerHTML = '<svg><use href="#i-x"/></svg>';
     del.onclick = () => { URL.revokeObjectURL(s.url); cam.shots.splice(i, 1); camRenderShots(); };
-    wrap.append(img, del);
+    const star = document.createElement('button');
+    star.className = 'star';
+    star.setAttribute('aria-label', 'Make main photo');
+    star.setAttribute('aria-pressed', !!s.primary);
+    star.innerHTML = '<svg><use href="#i-star"/></svg>';
+    star.onclick = () => camStar(i);
+    wrap.append(img, del, star);
     return wrap;
   }));
-  $('camShots').scrollLeft = $('camShots').scrollWidth;
   $('camCount').textContent = cam.shots.length;
   $('camDone').disabled = !cam.shots.length;
 }
@@ -1188,10 +1203,20 @@ async function camSnap() {
   }
   if (!cam.stream) return;
   const file = new File([blob], `photo-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
-  cam.shots.push({ file, url: URL.createObjectURL(blob) });
+  cam.shots.push({ file, url: URL.createObjectURL(blob), primary: false });
   camRenderShots();
+  $('camShots').scrollLeft = $('camShots').scrollWidth;
 }
 
+// At most one starred shot; tapping it again clears the star and leaves the item's main photo alone.
+function camStar(i) {
+  const on = !cam.shots[i].primary;
+  cam.shots.forEach((s, n) => { s.primary = on && n === i; });
+  camRenderShots();
+  if (viewerIsOpen()) viewerPos();
+}
+
+const camStarAction = { icon: 'i-star', label: 'Make main photo', run: camStar, pressed: i => !!cam.shots[i]?.primary };
 const camDeleteAction = {
   icon: 'i-trash', label: 'Delete photo',
   run(i) {
@@ -1208,9 +1233,10 @@ $('camShutter').onclick = camSnap;
 $('camClose').onclick = () => history.back();
 $('camDone').onclick = () => {
   const files = cam.shots.map(s => s.file);
+  const main = cam.shots.find(s => s.primary)?.file;
   camStop();
   history.back();
-  hbUploadPhotos(files);
+  hbUploadPhotos(files, main);
 };
 window.addEventListener('popstate', () => {
   if (viewerIsOpen()) { $('viewer').classList.add('hidden'); return; }
