@@ -555,26 +555,44 @@ function drawText(ctx, w, h) {
   return size;
 }
 
-// QR (same link Homebox's own labels use) on the left, name auto-sized on the right, details below it.
+// Largest pill text, down to a readable minimum, that keeps every tag on one row; null when they can't fit.
+function tagPills(ctx, tags, maxW, pillH, gap, family) {
+  const pad = Math.round(pillH * 0.28);
+  for (let size = Math.round(pillH * 0.6); size >= 14; size--) {
+    ctx.font = `700 ${size}px ${family}`;
+    const widths = tags.map(t => Math.ceil(ctx.measureText(t).width) + 2 * pad);
+    if (widths.reduce((a, b) => a + b, 0) + gap * (tags.length - 1) <= maxW) return { size, widths };
+  }
+  return null;
+}
+
+// QR (same link Homebox's own labels use) on the left, name auto-sized on the right, details below it, tags as pills along the bottom.
 function drawHomebox(ctx, w, h) {
   const lb = hb.label;
   if (!lb) return;
   const m = Math.round(Math.min(w, h) * 0.05);
+  const family = 'system-ui, sans-serif';
   ctx.fillStyle = '#000';
 
   // Tall labels stack the QR above the text instead of beside it.
   const tall = h > w * 1.2;
+
+  // Labels too short for a row of pills, or tags too many for one, print the tags as a detail line instead.
+  const pillH = Math.round(h * 0.21), pillGap = Math.round(m * 0.67);
+  const pills = lb.tags.length && !tall && h >= 240 ? tagPills(ctx, lb.tags, w - 2 * m, pillH, pillGap, family) : null;
+  const bottom = pills ? h - m - pillH : h;
+
   let qrSize = 0;
   if (window.qrcode) {
     const qr = qrcode(0, 'M');
     qr.addData(lb.url);
     qr.make();
     const n = qr.getModuleCount();
-    const box = tall ? Math.min(w - 2 * m, h * 0.5) : Math.min(h - 2 * m, w * 0.5);
+    const box = tall ? Math.min(w - 2 * m, h * 0.5) : Math.min(bottom - 2 * m, w * 0.5);
     const cell = Math.floor(box / n);
     qrSize = cell * n;
     const x0 = tall ? Math.round((w - qrSize) / 2) : m;
-    const y0 = tall ? m : Math.round((h - qrSize) / 2);
+    const y0 = tall ? m : Math.round((bottom - qrSize) / 2);
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
       if (qr.isDark(r, c)) ctx.fillRect(x0 + c * cell, y0 + r * cell, cell, cell);
     }
@@ -582,13 +600,12 @@ function drawHomebox(ctx, w, h) {
 
   const tx = qrSize && !tall ? 2 * m + qrSize : m;
   const ty = qrSize && tall ? 2 * m + qrSize : m;
-  const tw = w - tx - m, th = h - ty - m;
-  const family = 'system-ui, sans-serif';
+  const tw = w - tx - m, th = bottom - ty - m;
   const nameStyle = { weight: 700, family };
   const subStyle = { weight: 400, family };
 
   // Details share one size and may wrap one extra line before shrinking.
-  const details = lb.sub.filter(Boolean);
+  const details = pills ? lb.sub : [...lb.sub, lb.tags.join(', ')].filter(Boolean);
   const subMax = Math.max(14, Math.round(Math.min(w, h) * 0.09));
   const subText = details.join('\n');
   const subSize = details.length ? fitSize(ctx, subText, tw, subMax * 1.15 * (details.length + 1), subStyle, subMax + 1) : 0;
@@ -608,6 +625,21 @@ function drawHomebox(ctx, w, h) {
   y += gap;
   ctx.font = `${subStyle.weight} ${subSize}px ${family}`;
   for (const l of subLines) { ctx.fillText(l, x, y); y += subSize * 1.15; }
+
+  if (!pills) return;
+  let pillX = lb.tags.length === 1 ? Math.round((w - pills.widths[0]) / 2) : m;
+  ctx.font = `700 ${pills.size}px ${family}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  lb.tags.forEach((tag, i) => {
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.roundRect(pillX, bottom, pills.widths[i], pillH, pillH / 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(tag, pillX + pills.widths[i] / 2, bottom + pillH / 2);
+    pillX += pills.widths[i] + pillGap;
+  });
 }
 
 function drawImage(ctx, w, h, img) {
@@ -927,7 +959,7 @@ function hbRenderResults(items) {
     name.textContent = it.name;
     const sub = document.createElement('span');
     sub.className = 'sub';
-    sub.textContent = hbDetails(it).join('  ·  ');
+    sub.textContent = [...hbDetails(it), hbTags(it).join(', ')].filter(Boolean).join('  ·  ');
     btn.append(name, sub);
     btn.onclick = () => hbShow(hbLabel(it, S.hbKind));
     const li = document.createElement('li');
@@ -960,9 +992,11 @@ function hbDetails(e) {
   return [(e.location || e.parent)?.name, asset].filter(Boolean);
 }
 
+const hbTags = e => (e.tags || []).map(t => t.name);
+
 // kind is the Homebox page the QR opens: item or location.
 function hbLabel(e, kind) {
-  return { id: e.id, name: e.name, sub: hbDetails(e), url: `${location.origin}/${kind}/${e.id}` };
+  return { id: e.id, name: e.name, sub: hbDetails(e), tags: hbTags(e), url: `${location.origin}/${kind}/${e.id}` };
 }
 
 function hbShow(label) {
