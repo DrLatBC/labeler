@@ -217,6 +217,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   min-width: 52px; height: 52px; padding: 0 14px; border: 0; border-radius: 26px;
   background: rgba(255,255,255,.16); color: #fff; font-weight: 600; font-size: 16px;
 }
+.cam-lens { position: absolute; top: max(16px, env(safe-area-inset-top)); right: 16px; font-variant-numeric: tabular-nums; }
 .cam-done { background: var(--accent); }
 .cam-done:disabled { background: rgba(255,255,255,.16); opacity: .5; }
 .cam-shutter { width: 76px; height: 76px; border-radius: 50%; border: 4px solid #fff; background: #fff; box-shadow: inset 0 0 0 4px #000; }
@@ -454,6 +455,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   <video id="camVideo" playsinline muted autoplay></video>
   <div class="cam-flash" id="camFlash"></div>
   <div class="cam-focus" id="camFocus"></div>
+  <button class="cam-btn cam-lens hidden" id="camLens" aria-label="Switch lens"><svg><use href="#i-camera"/></svg><span id="camLensNo"></span></button>
   <div class="cam-shots" id="camShots"></div>
   <div class="cam-bar">
     <button class="cam-btn" id="camClose" aria-label="Cancel"><svg><use href="#i-x"/></svg></button>
@@ -495,7 +497,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const DEFAULTS = {
   mode: 'text', text: '', align: 'center', bold: true, border: false, invertText: false,
   font: 'system-ui, sans-serif', fit: true, fontSize: 48,
-  dither: true, invertImg: false, bright: 0, hbKind: 'item',
+  dither: true, invertImg: false, bright: 0, hbKind: 'item', lens: '',
   size: '40x30', cw: 40, ch: 30, media: 10, density: 10, copies: 1,
 };
 let S = { ...DEFAULTS };
@@ -1173,25 +1175,63 @@ async function hbUploadPhotos(files, mainFile) {
 $('hbPhotos').onchange = e => { hbUploadPhotos([...e.target.files]); e.target.value = ''; };
 
 // ---- Live camera: shoot several photos in a row, then upload them together ----
-const cam = { stream: null, capture: null, shots: [], canFocus: false, aimed: false };
+const cam = { stream: null, capture: null, shots: [], canFocus: false, aimed: false, lenses: [], switching: false };
 const camIsOpen = () => !$('cam').classList.contains('hidden');
 
-async function camOpen() {
-  if (!hb.label) return;
-  try {
-    cam.stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 4096 }, height: { ideal: 3072 } },
-      audio: false,
-    });
-  } catch (e) {
-    toast(e.name === 'NotAllowedError' ? 'Camera permission denied' : 'Camera unavailable');
-    return;
-  }
+async function camStart(deviceId) {
+  cam.stream = await navigator.mediaDevices.getUserMedia({
+    video: { ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' }), width: { ideal: 4096 }, height: { ideal: 3072 } },
+    audio: false,
+  });
   const track = cam.stream.getVideoTracks()[0];
   cam.capture = 'ImageCapture' in window ? new ImageCapture(track) : null;
   cam.canFocus = !!track.getCapabilities?.().focusMode?.length;
   cam.aimed = false;
   $('camVideo').srcObject = cam.stream;
+}
+
+const camLensId = () => cam.stream.getVideoTracks()[0].getSettings().deviceId;
+
+function camRenderLens() {
+  const at = cam.lenses.findIndex(l => l.deviceId === camLensId());
+  $('camLens').classList.toggle('hidden', cam.lenses.length < 2);
+  $('camLensNo').textContent = `${at + 1}/${cam.lenses.length}`;
+}
+
+async function camNextLens() {
+  if (cam.switching || !cam.stream) return;
+  cam.switching = true;
+  const at = cam.lenses.findIndex(l => l.deviceId === camLensId());
+  // Phones often can't run two cameras at once, so the old one closes first.
+  cam.stream.getTracks().forEach(t => t.stop());
+  cam.stream = null;
+  // Skips any lens that won't open; the last step is the lens already in use.
+  for (let step = 1; step <= cam.lenses.length && !cam.stream; step++) {
+    const lens = cam.lenses[(at + step) % cam.lenses.length];
+    try {
+      await camStart(lens.deviceId);
+      S.lens = lens.deviceId;
+      save();
+      toast(lens.label);
+    } catch {}
+  }
+  cam.switching = false;
+  if (!camIsOpen()) camStop();
+  else if (cam.stream) camRenderLens();
+  else toast('Camera unavailable');
+}
+
+async function camOpen() {
+  if (!hb.label) return;
+  try {
+    await camStart(S.lens).catch(e => { if (!S.lens) throw e; return camStart(''); });
+  } catch (e) {
+    toast(e.name === 'NotAllowedError' ? 'Camera permission denied' : 'Camera unavailable');
+    return;
+  }
+  const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  cam.lenses = devices.filter(d => d.kind === 'videoinput' && /back/i.test(d.label));
+  camRenderLens();
   cam.shots = [];
   camRenderShots();
   $('cam').classList.remove('hidden');
@@ -1307,6 +1347,7 @@ const camDeleteAction = {
 
 $('hbCamBtn').onclick = camOpen;
 $('camVideo').onclick = camTapFocus;
+$('camLens').onclick = camNextLens;
 $('camShutter').onclick = camSnap;
 $('camClose').onclick = () => history.back();
 $('camDone').onclick = () => {
