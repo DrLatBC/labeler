@@ -192,6 +192,12 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .cam video { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
 .cam-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity .2s; }
 .cam-flash.on { opacity: .6; transition: none; }
+.cam-focus {
+  position: absolute; width: 72px; height: 72px; margin: -36px 0 0 -36px;
+  border: 2px solid var(--star); border-radius: 50%; opacity: 0; pointer-events: none;
+}
+.cam-focus.on { animation: cam-focus .9s ease-out; }
+@keyframes cam-focus { 0% { opacity: 1; transform: scale(1.4); } 30% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1); } }
 .cam-shots { position: absolute; left: 0; right: 0; bottom: 124px; display: flex; gap: 10px; padding: 8px 16px; overflow-x: auto; }
 .cam-shots div { position: relative; flex: none; }
 .cam-shots img { display: block; width: 56px; height: 56px; object-fit: cover; border-radius: 8px; border: 2px solid #fff; }
@@ -447,6 +453,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 <div class="cam hidden" id="cam">
   <video id="camVideo" playsinline muted autoplay></video>
   <div class="cam-flash" id="camFlash"></div>
+  <div class="cam-focus" id="camFocus"></div>
   <div class="cam-shots" id="camShots"></div>
   <div class="cam-bar">
     <button class="cam-btn" id="camClose" aria-label="Cancel"><svg><use href="#i-x"/></svg></button>
@@ -1166,7 +1173,7 @@ async function hbUploadPhotos(files, mainFile) {
 $('hbPhotos').onchange = e => { hbUploadPhotos([...e.target.files]); e.target.value = ''; };
 
 // ---- Live camera: shoot several photos in a row, then upload them together ----
-const cam = { stream: null, capture: null, shots: [] };
+const cam = { stream: null, capture: null, shots: [], canFocus: false, aimed: false };
 const camIsOpen = () => !$('cam').classList.contains('hidden');
 
 async function camOpen() {
@@ -1182,6 +1189,8 @@ async function camOpen() {
   }
   const track = cam.stream.getVideoTracks()[0];
   cam.capture = 'ImageCapture' in window ? new ImageCapture(track) : null;
+  cam.canFocus = !!track.getCapabilities?.().focusMode?.length;
+  cam.aimed = false;
   $('camVideo').srcObject = cam.stream;
   cam.shots = [];
   camRenderShots();
@@ -1221,6 +1230,38 @@ function camRenderShots() {
   $('camDone').disabled = !cam.shots.length;
 }
 
+// Chrome on Android applies focus points to the raw sensor image, ignoring rotation; back cameras sit 90 degrees from portrait.
+function camSensorPoint(x, y) {
+  const turn = (450 - (screen.orientation?.angle || 0)) % 360;
+  if (turn === 90) return { x: y, y: 1 - x };
+  if (turn === 180) return { x: 1 - x, y: 1 - y };
+  if (turn === 270) return { x: 1 - y, y: x };
+  return { x, y };
+}
+
+// Stays in continuous focus, which follows the point; Chrome on Android never triggers focusMode 'single-shot'.
+function camAim(point) {
+  cam.stream?.getVideoTracks()[0].applyConstraints({ advanced: [{ pointsOfInterest: [point] }] }).catch(() => {});
+}
+
+function camTapFocus(e) {
+  const v = $('camVideo');
+  if (!cam.canFocus || !v.videoWidth) return;
+  const r = v.getBoundingClientRect();
+  const shown = Math.min(r.width / v.videoWidth, r.height / v.videoHeight);
+  const x = (e.clientX - r.left - (r.width - v.videoWidth * shown) / 2) / (v.videoWidth * shown);
+  const y = (e.clientY - r.top - (r.height - v.videoHeight * shown) / 2) / (v.videoHeight * shown);
+  if (x < 0 || x > 1 || y < 0 || y > 1) return;
+  camAim(camSensorPoint(x, y));
+  cam.aimed = true;
+  const ring = $('camFocus');
+  ring.style.left = e.clientX + 'px';
+  ring.style.top = e.clientY + 'px';
+  ring.classList.remove('on');
+  void ring.offsetWidth;
+  ring.classList.add('on');
+}
+
 async function camSnap() {
   if (!cam.stream) return;
   const flash = $('camFlash');
@@ -1237,6 +1278,7 @@ async function camSnap() {
     blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.92));
   }
   if (!cam.stream) return;
+  if (cam.aimed) { cam.aimed = false; camAim({ x: 0.5, y: 0.5 }); }
   const file = new File([blob], `photo-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
   cam.shots.push({ file, url: URL.createObjectURL(blob), primary: false });
   camRenderShots();
@@ -1264,6 +1306,7 @@ const camDeleteAction = {
 };
 
 $('hbCamBtn').onclick = camOpen;
+$('camVideo').onclick = camTapFocus;
 $('camShutter').onclick = camSnap;
 $('camClose').onclick = () => history.back();
 $('camDone').onclick = () => {
